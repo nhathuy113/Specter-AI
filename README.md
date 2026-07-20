@@ -102,23 +102,24 @@ Download the latest release for your platform from the [Releases](https://github
 
 ### Build from Source
 
-**Prerequisites:** Node.js 18+ and npm
+**Prerequisites:** Node.js 18+ and [pnpm](https://pnpm.io) 9+
 
 ```bash
-# Clone the repository
-git clone https://github.com/umairinayat/Specter-AI.git
+# Clone this fork (or the upstream repo)
+git clone https://github.com/nhathuy113/Specter-AI.git
 cd Specter-AI
+git checkout pnpm   # pnpm-first branch on this fork
 
 # Install dependencies
-npm install
+pnpm install
 
 # Run in development mode
-npm run dev
+pnpm dev
 
 # Build for your platform
-npm run build:win     # Windows
-npm run build:mac     # macOS
-npm run build:linux   # Linux
+pnpm run build:win     # Windows
+pnpm run build:mac     # macOS
+pnpm run build:linux   # Linux
 ```
 
 ---
@@ -251,19 +252,19 @@ Browse all 500+ models at [openrouter.ai/models](https://openrouter.ai/models).
 
 ```bash
 # Start in development mode with hot reload
-npm run dev
+pnpm dev
 
 # Type check
-npm run typecheck
+pnpm typecheck
 
 # Build renderer + main process
-npm run build
+pnpm build
 
 # Build distributable for current platform
-npm run build:win     # or build:mac / build:linux
+pnpm run build:win     # or build:mac / build:linux
 
 # Build unpacked directory (for testing)
-npm run build:unpack
+pnpm run build:unpack
 ```
 
 ### Environment Variables
@@ -285,7 +286,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 1. Fork the repo
 2. Create a branch (`feat/my-feature`)
 3. Make your changes
-4. Run `npm run typecheck && npm run build` to verify
+4. Run `pnpm typecheck && pnpm build` to verify
 5. Open a Pull Request
 
 ---
