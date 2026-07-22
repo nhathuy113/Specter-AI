@@ -9,6 +9,8 @@ import { CoachTriggerEvaluator } from '../services/coach-state'
 import { createCoachTickRunner } from '../services/coach-tick-runner'
 import { getSetting } from '../services/store'
 import { captureScreenText } from './screen-capture'
+import { appendJournalFromCapture } from '../services/activity-journal-capture'
+import { syncOverlayBackgroundMode } from './overlay-window'
 
 let coachTimer: ReturnType<typeof setInterval> | null = null
 let coachOverlay: BrowserWindow | null = null
@@ -37,9 +39,12 @@ export async function runCoachTickForTest(deps: Partial<{
   const isStreaming = deps.isStreaming ?? overlayCoachStreaming
   const assistantMode = deps.assistantMode ?? (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
   const captureScreen = deps.captureScreen ?? (async () => {
+    const fullAuto = getSetting<boolean>('fullAutoMode')
     const smartCrop = getSetting<boolean>('smartCrop') || false
-    const perceptionMode = (getSetting<string>('perceptionMode') as PerceptionMode) ?? DEFAULT_SETTINGS.perceptionMode
-    return captureScreenText(smartCrop, perceptionMode)
+    const perceptionMode = fullAuto
+      ? 'ocr'
+      : ((getSetting<string>('perceptionMode') as PerceptionMode) ?? DEFAULT_SETTINGS.perceptionMode)
+    return captureScreenText(smartCrop, perceptionMode, { skipAccessibility: fullAuto })
   })
 
   return runCoachTick({ nowMs, cooldownSec, isStreaming, assistantMode, captureScreen })
@@ -57,9 +62,19 @@ async function coachTimerTick(): Promise<void> {
   }
 
   const cooldownSec = getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec
+  const detectIntervalSec = getSetting<number>('detectIntervalSec') || DEFAULT_SETTINGS.detectIntervalSec
   const result = await runCoachTickForTest({ cooldownSec })
 
-  if (result.action === 'trigger' && !coachOverlay.isDestroyed()) {
+  const journalEnabled =
+    getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
+  if (journalEnabled && result.capture?.text?.trim()) {
+    appendJournalFromCapture(result.capture, {
+      durationSec: detectIntervalSec,
+      capturePlan: 'window-crop'
+    })
+  }
+
+  if (result.action === 'trigger' && !getSetting<boolean>('fullAutoMode') && !coachOverlay.isDestroyed()) {
     coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
       screenText: result.screenText,
       timestamp: Date.now(),
@@ -94,13 +109,17 @@ export function startContinuousCoach(overlayWindow: BrowserWindow, intervalSec: 
 
 export function syncContinuousCoach(overlayWindow: BrowserWindow): void {
   coachOverlay = overlayWindow
-  const enabled = getSetting<boolean>('continuousCoach')
+  const fullAuto = getSetting<boolean>('fullAutoMode')
+  const enabled = getSetting<boolean>('continuousCoach') || fullAuto
   const intervalSec = getSetting<number>('detectIntervalSec') || DEFAULT_SETTINGS.detectIntervalSec
+
+  syncOverlayBackgroundMode()
 
   if (enabled) {
     startContinuousCoach(overlayWindow, intervalSec)
   } else {
     stopContinuousCoach()
     coachOverlay = overlayWindow
+    syncOverlayBackgroundMode()
   }
 }

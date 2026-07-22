@@ -31,6 +31,7 @@ export interface UserSettings {
   fullAutoMode: boolean
   activityJournal: boolean
   journalIntervalSec: number
+  journalSmartCrop: boolean
   assistantMode: AssistantMode
   perceptionMode: PerceptionMode
   coachSystemPrompt: string
@@ -126,6 +127,10 @@ export interface ActivityJournalEntry {
   snippet: string
   fingerprint: string
   durationSec: number
+  /** OCR character count from smart-crop capture */
+  ocrChars?: number
+  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  capturePlan?: 'window-crop' | 'display-full'
 }
 
 export interface Playbook {

@@ -203,7 +203,8 @@ export const DEFAULT_SETTINGS = {
   smartCrop: true,            // auto-detect single/dual monitor smart crop
   fullAutoMode: false,        // watch + journal, no hotkey needed
   activityJournal: false,     // log focus every minute for performance review
-  journalIntervalSec: 60
+  journalIntervalSec: 60,
+  journalSmartCrop: true // journal uses smart crop + OCR (not AX-only)
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'

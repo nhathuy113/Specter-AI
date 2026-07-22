@@ -487,10 +487,12 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       if (key === 'fullAutoMode' && value === true) {
         setSetting('continuousCoach', true)
         setSetting('activityJournal', true)
+        setSetting('smartCrop', true)
+        setSetting('journalSmartCrop', true)
       }
       syncContinuousCoach(overlayWindow)
     }
-    if (key === 'activityJournal' || key === 'journalIntervalSec' || key === 'fullAutoMode') {
+    if (key === 'activityJournal' || key === 'journalIntervalSec' || key === 'journalSmartCrop' || key === 'fullAutoMode') {
       syncActivityJournal()
     }
     // Re-register hotkeys when hotkey settings change

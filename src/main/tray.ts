@@ -26,7 +26,7 @@ export function createTray(): Tray {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Show Overlay',
-      click: () => showOverlay()
+      click: () => showOverlay({ focus: true, force: true })
     },
     {
       label: 'Hide Overlay',

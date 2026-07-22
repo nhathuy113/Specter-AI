@@ -1,7 +1,10 @@
 // Screen capture + OCR pipeline — uses worker thread for OCR to avoid blocking main
 import { Worker } from 'worker_threads'
-import { join } from 'path'
-import { execSync } from 'child_process'
+import path from 'path'
+import { execFile, execSync } from 'child_process'
+import { promisify } from 'util'
+import fs from 'fs'
+import os from 'os'
 import screenshot from 'screenshot-desktop'
 import { screen } from 'electron'
 import type { ScreenCaptureResult, PerceptionMode } from '../shared/types'
@@ -15,9 +18,32 @@ import {
   type SmartCropPlan
 } from '../services/display-capture'
 import { resolveSmartCapturePlan } from '../services/smart-capture'
-import { getOverlayWindow, showOverlay } from './overlay-window'
+import { getOverlayWindow, isOverlayBackgroundWatch, releaseForegroundAfterBackgroundWork, showOverlay } from './overlay-window'
+import { getMacOSFrontWindowInfo } from './macos-front-window'
 
 let isCapturing = false
+
+const execFileAsync = promisify(execFile)
+
+/** macOS screencapture -x: no flash/sound, less likely to activate Specter than screenshot-desktop. */
+async function captureMacOSDisplayPng(displayIndex?: number): Promise<Buffer> {
+  const tmp = path.join(os.tmpdir(), `specter-cap-${Date.now()}-${Math.random().toString(36).slice(2)}.png`)
+  const args = ['-x']
+  if (displayIndex !== undefined) {
+    args.push('-D', String(displayIndex + 1))
+  }
+  args.push(tmp)
+  try {
+    await execFileAsync('screencapture', args, { timeout: 15000 })
+    return fs.readFileSync(tmp)
+  } finally {
+    try {
+      fs.unlinkSync(tmp)
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 interface OCRResponse {
   success: boolean
@@ -39,7 +65,7 @@ interface WindowBounds {
  */
 function ocrInWorker(imageBuffer: Buffer, language = 'eng'): Promise<string> {
   return new Promise((resolve, reject) => {
-    const workerPath = join(__dirname, 'ocr-worker.js')
+    const workerPath = path.join(__dirname, 'ocr-worker.js')
     const worker = new Worker(workerPath, {
       workerData: {
         imageBuffer: Buffer.from(imageBuffer),
@@ -78,6 +104,12 @@ function ocrInWorker(imageBuffer: Buffer, language = 'eng'): Promise<string> {
  * Returns true if the overlay was visible and was hidden.
  */
 function hideOverlayForCapture(): boolean {
+  // Background mode: overlay stays hidden — never hide/show cycle (avoids focus steal on macOS)
+  if (isOverlayBackgroundWatch()) return false
+
+  // macOS panel windows are excluded from screen capture — skip hide/show to avoid focus steal
+  if (process.platform === 'darwin') return false
+
   const overlay = getOverlayWindow()
   if (overlay && !overlay.isDestroyed() && overlay.isVisible()) {
     overlay.hide()
@@ -90,7 +122,8 @@ function hideOverlayForCapture(): boolean {
  * Restore the overlay window after capture.
  */
 function restoreOverlay(): void {
-  showOverlay()
+  if (isOverlayBackgroundWatch()) return
+  showOverlay({ focus: false })
 }
 
 /**
@@ -148,34 +181,14 @@ function getActiveWindowBounds(): WindowBounds | null {
         }
       }
     } else if (process.platform === 'darwin') {
-      // AppleScript: get bounds of the frontmost application's front window
-      const script = `
-        tell application "System Events"
-          set frontApp to first application process whose frontmost is true
-          set appName to name of frontApp
-          tell frontApp
-            set {x, y} to position of front window
-            set {w, h} to size of front window
-          end tell
-          return (x as text) & "|" & (y as text) & "|" & (w as text) & "|" & (h as text) & "|" & appName
-        end tell
-      `.trim()
-
-      const result = execSync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, {
-        timeout: 3000,
-        encoding: 'utf-8'
-      }).trim()
-
-      const parts = result.split('|')
-      if (parts.length >= 4) {
-        const x = parseInt(parts[0], 10)
-        const y = parseInt(parts[1], 10)
-        const width = parseInt(parts[2], 10)
-        const height = parseInt(parts[3], 10)
-        const title = parts.slice(4).join('|')
-
-        if (width > 50 && height > 50) {
-          return { x, y, width, height, title }
+      const info = getMacOSFrontWindowInfo()
+      if (info) {
+        return {
+          x: info.x,
+          y: info.y,
+          width: info.width,
+          height: info.height,
+          title: info.windowTitle || info.appName
         }
       }
     } else if (process.platform === 'linux') {
@@ -269,6 +282,9 @@ async function cropImageBuffer(
 }
 
 async function captureDisplayScreenshot(displayIndex?: number): Promise<Buffer> {
+  if (process.platform === 'darwin' && isOverlayBackgroundWatch()) {
+    return captureMacOSDisplayPng(displayIndex)
+  }
   if (displayIndex === undefined) {
     return screenshot({ format: 'png' })
   }
@@ -311,7 +327,8 @@ async function captureFromPlan(plan: SmartCropPlan): Promise<Buffer> {
  */
 export async function captureScreenText(
   activeWindowOnly = false,
-  perceptionMode?: PerceptionMode
+  perceptionMode?: PerceptionMode,
+  opts: { skipAccessibility?: boolean } = {}
 ): Promise<ScreenCaptureResult> {
   if (isCapturing) {
     throw new Error('Screen capture already in progress')
@@ -321,8 +338,22 @@ export async function captureScreenText(
 
   // Detect active window BEFORE hiding overlay (so the user's actual window is still focused)
   let activeWindowBounds: WindowBounds | null = null
+  let frontWindowMeta: ReturnType<typeof getMacOSFrontWindowInfo> = null
   if (activeWindowOnly) {
-    activeWindowBounds = getActiveWindowBounds()
+    if (process.platform === 'darwin') {
+      frontWindowMeta = getMacOSFrontWindowInfo()
+      if (frontWindowMeta) {
+        activeWindowBounds = {
+          x: frontWindowMeta.x,
+          y: frontWindowMeta.y,
+          width: frontWindowMeta.width,
+          height: frontWindowMeta.height,
+          title: frontWindowMeta.windowTitle || frontWindowMeta.appName
+        }
+      }
+    } else {
+      activeWindowBounds = getActiveWindowBounds()
+    }
   }
 
   const wasVisible = hideOverlayForCapture()
@@ -352,9 +383,15 @@ export async function captureScreenText(
       ?? (getSetting<string>('perceptionMode') as PerceptionMode)
       ?? DEFAULT_SETTINGS.perceptionMode
 
-    const axResult = mode === 'vision' ? null : captureAccessibilityText()
+    const axResult =
+      mode === 'vision' || opts.skipAccessibility
+        ? null
+        : captureAccessibilityText()
     const ocrText = await ocrInWorker(imgBuffer)
     const perception = resolvePerceptionPlan(mode, ocrText, axResult)
+
+    const appName = perception.appName ?? frontWindowMeta?.appName
+    const windowTitle = perception.windowTitle ?? frontWindowMeta?.windowTitle
 
     return {
       text: perception.text,
@@ -362,8 +399,8 @@ export async function captureScreenText(
       timestamp: Date.now(),
       textSource: perception.textSource,
       useVision: perception.useVision,
-      appName: perception.appName,
-      windowTitle: perception.windowTitle,
+      appName,
+      windowTitle,
       displayCount
     }
   } catch (err: unknown) {
@@ -373,6 +410,7 @@ export async function captureScreenText(
     throw new Error(message)
   } finally {
     isCapturing = false
+    releaseForegroundAfterBackgroundWork()
   }
 }
 

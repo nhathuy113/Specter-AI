@@ -30,7 +30,7 @@ function applyHotkeys(): void {
   try {
     globalShortcut.register(hotkeys.askAI, () => {
       if (win && !win.isDestroyed()) {
-        showOverlay()
+        showOverlay({ focus: true, force: true })
         win.webContents.send(IPC_CHANNELS.HOTKEY_ASK_AI)
       }
     })
@@ -41,7 +41,7 @@ function applyHotkeys(): void {
   try {
     globalShortcut.register(hotkeys.screenshotAsk, () => {
       if (win && !win.isDestroyed()) {
-        showOverlay()
+        showOverlay({ focus: true, force: true })
         win.webContents.send(IPC_CHANNELS.HOTKEY_ASK_WITH_SCREENSHOT)
       }
     })
@@ -76,7 +76,7 @@ function applyHotkeys(): void {
       const now = Date.now()
       if (now - lastActiveTabPressMs <= ACTIVE_TAB_DOUBLE_TAP_MS) {
         lastActiveTabPressMs = 0
-        showOverlay()
+        showOverlay({ focus: true, force: true })
         win.webContents.send(IPC_CHANNELS.HOTKEY_ACTIVE_TAB)
       } else {
         lastActiveTabPressMs = now

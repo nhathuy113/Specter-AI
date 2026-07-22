@@ -46,4 +46,13 @@ export function bootstrapSettingsFromEnv(): void {
   if (perceptionMode === 'auto' || perceptionMode === 'ocr' || perceptionMode === 'vision') {
     setSetting('perceptionMode', perceptionMode)
   }
+
+  if (process.env.FULL_AUTO_MODE === 'true') {
+    setSetting('fullAutoMode', true)
+    setSetting('continuousCoach', true)
+    setSetting('activityJournal', true)
+    setSetting('smartCrop', true)
+    setSetting('journalSmartCrop', true)
+    console.info('[Specter] FULL_AUTO_MODE enabled — Watch + smart-crop journal')
+  }
 }

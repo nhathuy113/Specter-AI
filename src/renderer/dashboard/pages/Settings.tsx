@@ -24,6 +24,7 @@ interface SettingsState {
   fullAutoMode: boolean
   activityJournal: boolean
   journalIntervalSec: number
+  journalSmartCrop: boolean
   assistantMode: AssistantMode
   perceptionMode: PerceptionMode
   coachSystemPrompt: string
@@ -64,6 +65,7 @@ const DEFAULT_STATE: SettingsState = {
   fullAutoMode: false,
   activityJournal: false,
   journalIntervalSec: 60,
+  journalSmartCrop: true,
   assistantMode: 'general',
   perceptionMode: 'auto',
   coachSystemPrompt: '',
@@ -130,6 +132,7 @@ export default function Settings() {
         fullAutoMode: all.fullAutoMode || false,
         activityJournal: all.activityJournal || false,
         journalIntervalSec: all.journalIntervalSec || 60,
+        journalSmartCrop: all.journalSmartCrop ?? true,
         assistantMode: all.assistantMode || 'general',
         perceptionMode: all.perceptionMode || 'auto',
         coachSystemPrompt: all.coachSystemPrompt || '',
@@ -171,6 +174,7 @@ export default function Settings() {
       await api.setSetting('fullAutoMode', settings.fullAutoMode)
       await api.setSetting('activityJournal', settings.activityJournal)
       await api.setSetting('journalIntervalSec', settings.journalIntervalSec)
+      await api.setSetting('journalSmartCrop', settings.journalSmartCrop)
       await api.setSetting('assistantMode', settings.assistantMode)
       await api.setSetting('perceptionMode', settings.perceptionMode)
       await api.setSetting('coachSystemPrompt', settings.coachSystemPrompt)
@@ -877,7 +881,7 @@ export default function Settings() {
                   ...prev,
                   fullAutoMode: !prev.fullAutoMode,
                   ...( !prev.fullAutoMode
-                    ? { continuousCoach: true, activityJournal: true }
+                    ? { continuousCoach: true, activityJournal: true, smartCrop: true, journalSmartCrop: true }
                     : {})
                 }))
               }}
@@ -897,7 +901,7 @@ export default function Settings() {
             <div>
               <label className="text-sm text-white/50">Activity journal</label>
               <p className="text-xs text-white/20 mt-0.5">
-                Log app, window, and screen kind every minute for performance review (Dashboard → Activity).
+                Log app, window, and smart-crop OCR every Watch tick (or on interval if Watch is off).
               </p>
             </div>
             <button
@@ -926,6 +930,32 @@ export default function Settings() {
                 className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
                            text-white/90 focus:border-violet-500/40 focus:outline-none w-32"
               />
+              <p className="text-xs text-white/20 mt-1">
+                Used only when Watch is off. With Watch on, journal logs every detect tick (~{settings.detectIntervalSec}s).
+              </p>
+            </div>
+          )}
+
+          {(settings.activityJournal || settings.fullAutoMode) && !settings.continuousCoach && !settings.fullAutoMode && (
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm text-white/50">Journal smart crop (OCR)</label>
+                <p className="text-xs text-white/20 mt-0.5">
+                  Crop focused window before OCR when logging without Watch.
+                </p>
+              </div>
+              <button
+                onClick={() => updateSetting('journalSmartCrop', !settings.journalSmartCrop)}
+                className={`relative w-11 h-6 rounded-full transition-colors ${
+                  settings.journalSmartCrop ? 'bg-violet-500' : 'bg-white/10'
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    settings.journalSmartCrop ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
             </div>
           )}
 

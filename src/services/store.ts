@@ -75,6 +75,7 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   fullAutoMode: (v) => typeof v === 'boolean',
   activityJournal: (v) => typeof v === 'boolean',
   journalIntervalSec: (v) => typeof v === 'number' && v >= 30 && v <= 300,
+  journalSmartCrop: (v) => typeof v === 'boolean',
   activityJournalLog: (v) => {
     if (!Array.isArray(v)) return false
     return v.every((item) => {
@@ -230,6 +231,7 @@ const schema = {
   fullAutoMode: { type: 'boolean' as const, default: DEFAULT_SETTINGS.fullAutoMode },
   activityJournal: { type: 'boolean' as const, default: DEFAULT_SETTINGS.activityJournal },
   journalIntervalSec: { type: 'number' as const, default: DEFAULT_SETTINGS.journalIntervalSec },
+  journalSmartCrop: { type: 'boolean' as const, default: DEFAULT_SETTINGS.journalSmartCrop },
   activityJournalLog: { type: 'array' as const, default: [] }
 }
 
@@ -333,6 +335,7 @@ export function getAllSettings(): UserSettings {
     fullAutoMode: s.get('fullAutoMode') as boolean,
     activityJournal: s.get('activityJournal') as boolean,
     journalIntervalSec: s.get('journalIntervalSec') as number,
+    journalSmartCrop: s.get('journalSmartCrop') as boolean,
     assistantMode: s.get('assistantMode') as UserSettings['assistantMode'],
     perceptionMode: s.get('perceptionMode') as UserSettings['perceptionMode'],
     coachSystemPrompt: s.get('coachSystemPrompt') as string,

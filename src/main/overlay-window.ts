@@ -8,7 +8,7 @@
 //            a BLACK RECTANGLE on transparent/layered windows.
 //   Linux:   No reliable screen-capture exclusion API exists.
 
-import { BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import { getSetting, setSetting } from '../services/store'
@@ -17,6 +17,7 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
 
 let overlayWindow: BrowserWindow | null = null
+let backgroundWatchMode = false
 
 /**
  * Apply screen-capture protection via native FFI (Windows only).
@@ -33,17 +34,28 @@ function applyCaptureProtection(win: BrowserWindow): void {
   }
 }
 
-function showProtectedOverlay(win: BrowserWindow, focus = false): void {
+function showProtectedOverlay(win: BrowserWindow, focus = false, force = false): void {
   if (win.isDestroyed()) return
+  // Background watch/journal: never auto-show overlay (capture cycles must stay invisible)
+  if (backgroundWatchMode && !force) return
 
-  // Re-assert capture protection after hide/show cycles
-  // (Windows can drop display affinity flags when windows are hidden)
-  win.show()
   applyCaptureProtection(win)
 
   if (focus) {
+    win.show()
     win.focus()
+  } else {
+    // showInactive — do not steal keyboard focus from the user's active app
+    win.showInactive()
   }
+}
+
+/** Keep overlay hidden while Watch / journal / full-auto runs in the background. */
+export function syncOverlayBackgroundMode(): void {
+  const fullAuto = getSetting<boolean>('fullAutoMode')
+  const watch = getSetting<boolean>('continuousCoach')
+  const journal = getSetting<boolean>('activityJournal')
+  setOverlayBackgroundWatch(!!(fullAuto || watch || journal))
 }
 
 export function createOverlayWindow(): BrowserWindow {
@@ -62,6 +74,7 @@ export function createOverlayWindow(): BrowserWindow {
     height: winHeight,
     x,
     y,
+    show: false, // Hidden until user opens via hotkey/tray — avoids focus steal on startup
     transparent: true,
     frame: false,
     movable: true,          // Explicitly allow dragging
@@ -160,26 +173,84 @@ export function createOverlayWindow(): BrowserWindow {
   return overlayWindow
 }
 
-export function getOverlayWindow(): BrowserWindow | null {
-  return overlayWindow
+function applyOverlayInteractiveState(win: BrowserWindow, interactive: boolean): void {
+  if (win.isDestroyed()) return
+  if (interactive) {
+    win.setFocusable(true)
+    if (process.platform === 'darwin') {
+      win.setAlwaysOnTop(true, 'screen-saver', 1)
+    } else {
+      win.setAlwaysOnTop(true, 'screen-saver')
+    }
+  } else {
+    // Fully demote — hidden panel + alwaysOnTop can still block clicks/focus on macOS
+    win.hide()
+    win.setFocusable(false)
+    win.setAlwaysOnTop(false)
+  }
+}
+
+/** macOS: run as tray/accessory app so screen capture does not front Specter. */
+export function syncMacAppActivationPolicy(): void {
+  if (process.platform !== 'darwin') return
+  if (backgroundWatchMode) {
+    app.setActivationPolicy('accessory')
+    app.dock?.hide()
+  } else {
+    app.setActivationPolicy('regular')
+  }
+}
+
+export function setOverlayBackgroundWatch(enabled: boolean): void {
+  backgroundWatchMode = enabled
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    applyOverlayInteractiveState(overlayWindow, !enabled)
+  }
+  syncMacAppActivationPolicy()
+}
+
+export function isOverlayBackgroundWatch(): boolean {
+  return backgroundWatchMode
 }
 
 export function toggleOverlay(): void {
   if (!overlayWindow) return
   if (overlayWindow.isVisible()) {
     overlayWindow.hide()
+    syncOverlayBackgroundMode()
   } else {
-    showProtectedOverlay(overlayWindow)
+    backgroundWatchMode = false
+    applyOverlayInteractiveState(overlayWindow, true)
+    syncMacAppActivationPolicy()
+    showProtectedOverlay(overlayWindow, true, true)
   }
 }
 
-export function showOverlay(options?: { focus?: boolean }): void {
+export function getOverlayWindow(): BrowserWindow | null {
+  return overlayWindow
+}
+
+export function showOverlay(options?: { focus?: boolean; force?: boolean }): void {
   if (!overlayWindow) return
-  showProtectedOverlay(overlayWindow, options?.focus ?? false)
+  const force = options?.force ?? false
+  if (force) {
+    backgroundWatchMode = false
+    applyOverlayInteractiveState(overlayWindow, true)
+    syncMacAppActivationPolicy()
+  }
+  showProtectedOverlay(overlayWindow, options?.focus ?? false, force)
 }
 
 export function hideOverlay(): void {
-  overlayWindow?.hide()
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  overlayWindow.hide()
+  syncOverlayBackgroundMode()
+}
+
+/** After background capture — give focus back to whatever the user was using. */
+export function releaseForegroundAfterBackgroundWork(): void {
+  if (!backgroundWatchMode || process.platform !== 'darwin') return
+  app.hide()
 }
 
 /**

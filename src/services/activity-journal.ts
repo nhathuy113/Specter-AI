@@ -1,17 +1,8 @@
 import type { ScreenKind } from './context-router'
+import type { ActivityJournalEntry } from '../shared/types'
 import { getSetting, setSetting } from './store'
 
-export interface ActivityJournalEntry {
-  id: string
-  minuteKey: string
-  timestamp: number
-  appName: string
-  windowTitle: string
-  screenKind: ScreenKind
-  snippet: string
-  fingerprint: string
-  durationSec: number
-}
+export type { ActivityJournalEntry } from '../shared/types'
 
 export const MAX_JOURNAL_ENTRIES = 10_080 // ~7 days at 1/min
 
@@ -39,6 +30,10 @@ export interface JournalSnapshotInput {
   snippet: string
   fingerprint: string
   timestamp?: number
+  durationSec?: number
+  ocrChars?: number
+  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  capturePlan?: 'window-crop' | 'display-full'
 }
 
 /** Merge into same minute + fingerprint bucket, or append. */
@@ -53,11 +48,14 @@ export function appendJournalSnapshot(input: JournalSnapshotInput): ActivityJour
     last.minuteKey === minuteKey &&
     last.fingerprint === input.fingerprint
   ) {
-    last.durationSec += 60
+    last.durationSec += input.durationSec ?? 60
     last.timestamp = timestamp
     if (input.snippet && input.snippet.length > last.snippet.length) {
       last.snippet = input.snippet.slice(0, 400)
     }
+    if (input.ocrChars !== undefined) last.ocrChars = input.ocrChars
+    if (input.textSource) last.textSource = input.textSource
+    if (input.capturePlan) last.capturePlan = input.capturePlan
     saveJournalEntries(entries)
     return last
   }
@@ -71,7 +69,10 @@ export function appendJournalSnapshot(input: JournalSnapshotInput): ActivityJour
     screenKind: input.screenKind,
     snippet: input.snippet.slice(0, 400),
     fingerprint: input.fingerprint,
-    durationSec: 60
+    durationSec: input.durationSec ?? 60,
+    ocrChars: input.ocrChars,
+    textSource: input.textSource,
+    capturePlan: input.capturePlan
   }
 
   saveJournalEntries([...entries, entry])

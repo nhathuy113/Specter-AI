@@ -1,7 +1,7 @@
 // Specter AI — Main process entry point
 import { app, BrowserWindow, shell } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { createOverlayWindow, getOverlayWindow, showOverlay } from './overlay-window'
+import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOverlay } from './overlay-window'
 import { createTray, destroyTray } from './tray'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -81,7 +81,8 @@ app.whenReady().then(() => {
       createOverlayWindow()
     } else {
       const ov = getOverlayWindow()
-      if (ov) showOverlay({ focus: true })
+      // Screen capture can re-activate the app — do not pop overlay during background journal/watch
+      if (ov && !isOverlayBackgroundWatch()) showOverlay({ focus: true, force: true })
     }
   })
 })
@@ -90,7 +91,7 @@ app.whenReady().then(() => {
 app.on('second-instance', () => {
   const overlay = getOverlayWindow()
   if (overlay) {
-    showOverlay({ focus: true })
+    showOverlay({ focus: true, force: true })
   }
 })
 

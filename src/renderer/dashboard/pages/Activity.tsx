@@ -80,7 +80,7 @@ export default function ActivityPage() {
         <div className="text-center py-16 border border-dashed border-white/10 rounded-xl">
           <Clock className="w-8 h-8 text-white/10 mx-auto mb-3" />
           <p className="text-white/30 text-sm">No activity logged yet</p>
-          <p className="text-white/15 text-xs mt-1">Turn on Activity Journal or Full Auto Mode in Settings</p>
+          <p className="text-white/15 text-xs mt-1">Turn on Watch + Activity Journal in Settings — logs smart-crop OCR each tick</p>
         </div>
       ) : (
         <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
@@ -100,9 +100,11 @@ export default function ActivityPage() {
               {entry.snippet && (
                 <p className="text-xs text-white/30 mt-1 line-clamp-2 font-mono">{entry.snippet}</p>
               )}
-              <p className="text-[10px] text-white/15 mt-1">
-                ~{Math.max(1, Math.round(entry.durationSec / 60))} min focused
-              </p>
+                <p className="text-[10px] text-white/15 mt-1">
+                  ~{Math.max(1, Math.round(entry.durationSec / 60))} min focused
+                  {entry.ocrChars ? ` · ${entry.ocrChars} OCR chars` : ''}
+                  {entry.capturePlan ? ` · ${entry.capturePlan}` : ''}
+                </p>
             </div>
           ))}
         </div>
