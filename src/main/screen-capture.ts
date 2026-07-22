@@ -330,8 +330,9 @@ export async function captureScreenText(
     if (wasVisible) await waitForRepaint()
 
     let imgBuffer: Buffer
+    const displays = listElectronDisplays()
+    const displayCount = displays.length
     if (activeWindowOnly) {
-      const displays = listElectronDisplays()
       const plan = resolveSmartCapturePlan(activeWindowBounds, displays)
       if (plan) {
         imgBuffer = await captureFromPlan(plan)
@@ -362,7 +363,8 @@ export async function captureScreenText(
       textSource: perception.textSource,
       useVision: perception.useVision,
       appName: perception.appName,
-      windowTitle: perception.windowTitle
+      windowTitle: perception.windowTitle,
+      displayCount
     }
   } catch (err: unknown) {
     // Always restore overlay even if capture fails

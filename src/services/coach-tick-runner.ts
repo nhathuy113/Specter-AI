@@ -29,7 +29,8 @@ export function createCoachTickRunner(evaluator: CoachTriggerEvaluator) {
       nowMs: deps.nowMs,
       cooldownSec: deps.cooldownSec,
       isStreaming: deps.isStreaming,
-      assistantMode: deps.assistantMode
+      assistantMode: deps.assistantMode,
+      displayCount: capture.displayCount
     })
 
     if (result.action === 'trigger') {

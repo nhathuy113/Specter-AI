@@ -56,8 +56,8 @@ async function callGeminiCoach(systemPrompt: string, userMessage: string): Promi
 }
 
 describe('assistant useful live e2e', () => {
-  it('game mode + IDE OCR → instant redirect (no API)', () => {
-    const req = resolveCoachRequest(IDE_OCR, 'game')
+  it('game mode + IDE OCR → instant redirect on dual monitor (no API)', () => {
+    const req = resolveCoachRequest(IDE_OCR, 'game', { displayCount: 2 })
     expect(req.kind).toBe('ide')
     expect(req.instantReply).toBeTruthy()
     const score = scoreCoachReply(req.instantReply!, 'ide')

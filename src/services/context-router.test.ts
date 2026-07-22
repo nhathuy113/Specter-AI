@@ -51,10 +51,17 @@ describe('extractScreenContext', () => {
     expect(ctx.instantReply).toBeUndefined()
   })
 
-  it('redirects IDE in game mode', () => {
-    const ctx = extractScreenContext(IDE_OCR, 'game')
+  it('redirects IDE in game mode on dual monitor', () => {
+    const ctx = extractScreenContext(IDE_OCR, 'game', { displayCount: 2 })
     expect(ctx.kind).toBe('ide')
     expect(ctx.instantReply?.toLowerCase()).toContain('game')
+  })
+
+  it('allows IDE in game mode on single monitor like other modes', () => {
+    const ctx = extractScreenContext(IDE_OCR, 'game', { displayCount: 1 })
+    expect(ctx.kind).toBe('ide')
+    expect(ctx.actionable).toBe(true)
+    expect(ctx.instantReply).toBeUndefined()
   })
 
   it('returns empty guidance for blank OCR', () => {
@@ -72,8 +79,8 @@ describe('resolveAssistantRequest', () => {
     expect(req.userMessage).toContain('Brussels')
   })
 
-  it('instant reply for game mode on IDE', () => {
-    const req = resolveAssistantRequest(IDE_OCR, 'game')
+  it('instant reply for game mode on IDE (dual monitor)', () => {
+    const req = resolveAssistantRequest(IDE_OCR, 'game', { displayCount: 2 })
     expect(req.instantReply).toBeTruthy()
   })
 

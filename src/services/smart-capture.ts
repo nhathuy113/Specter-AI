@@ -1,18 +1,16 @@
 import {
+  isDualMonitorSetup,
   planSmartCropCapture,
   type DisplayInfo,
   type SmartCropPlan,
   type WindowRect
 } from './display-capture'
 
+export { isDualMonitorSetup } from './display-capture'
+
 const IGNORED_ALWAYS = ['specter', 'electron']
 const IGNORED_ON_DUAL_ONLY = ['cursor', 'google ai studio']
 
-export function isDualMonitorSetup(displays: DisplayInfo[]): boolean {
-  return displays.filter((d) => d.isPrimary).length >= 1 && displays.length > 1
-}
-
-/** Specter overlay is always ignored. IDE/dev tools ignored only on dual-monitor (capture external display). */
 export function shouldIgnoreActiveWindow(title: string, displays?: DisplayInfo[]): boolean {
   const lower = title.toLowerCase()
   if (IGNORED_ALWAYS.some((needle) => lower.includes(needle))) return true

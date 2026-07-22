@@ -94,6 +94,7 @@ export interface ScreenCaptureResult {
   useVision?: boolean
   appName?: string
   windowTitle?: string
+  displayCount?: number
 }
 
 export interface CostEstimate {
@@ -108,6 +109,7 @@ export interface ScreenMetadata {
   appName?: string
   windowTitle?: string
   textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  displayCount?: number
 }
 
 export interface Playbook {

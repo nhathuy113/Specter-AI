@@ -24,13 +24,26 @@ if (!apiKey) {
 
 const pngPath = join(tmpdir(), `specter-vision-e2e-${Date.now()}.png`)
 
-function captureSecondary() {
-  execSync(`screencapture -x -D 2 "${pngPath}"`, { timeout: 15000 })
-  const buf = readFileSync(pngPath)
+function probeDisplayCount() {
+  const out = execSync('system_profiler SPDisplaysDataType', { encoding: 'utf-8', timeout: 15000 })
+  const count = [...out.matchAll(/Resolution:\s+(\d+)\s+x\s+(\d+)/g)].length
+  return count > 0 ? count : 1
+}
+
+function captureScreen(outPath) {
+  const displayCount = probeDisplayCount()
+  const displayIndex = displayCount > 1 ? 2 : 1
+  execSync(`screencapture -x -D ${displayIndex} "${outPath}"`, { timeout: 15000 })
+  const buf = readFileSync(outPath)
   if (buf.length < 10_000) {
     throw new Error(`Capture too small (${buf.length} bytes)`)
   }
-  return buf.toString('base64')
+  return { buf, displayCount, displayIndex }
+}
+
+function captureSecondary() {
+  const result = captureScreen(pngPath)
+  return result.buf.toString('base64')
 }
 
 async function visionChat(imageBase64) {
@@ -95,6 +108,8 @@ function scoreVisionReply(reply) {
 console.log(`==> Gemini vision live test (model: ${model})`)
 
 try {
+  const displayCount = probeDisplayCount()
+  console.log(`  layout: ${displayCount > 1 ? 'dual' : 'single'} monitor (${displayCount} display(s))`)
   const imageBase64 = captureSecondary()
   console.log(`  capture: OK (${Math.round(imageBase64.length / 1024)}KB base64)`)
 

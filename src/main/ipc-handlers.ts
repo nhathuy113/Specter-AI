@@ -232,7 +232,8 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
         screenMetadata = {
           appName: capture.appName,
           windowTitle: capture.windowTitle,
-          textSource: capture.textSource
+          textSource: capture.textSource,
+          displayCount: capture.displayCount
         }
       } catch (err: unknown) {
         console.warn('[Specter] Screen capture failed:', err)

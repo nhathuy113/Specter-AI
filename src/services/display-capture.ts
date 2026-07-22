@@ -73,6 +73,10 @@ export type SmartCropPlan =
   | { type: 'window-crop'; window: WindowRect; display: DisplayInfo }
   | { type: 'display-full'; display: DisplayInfo }
 
+export function isDualMonitorSetup(displays: DisplayInfo[]): boolean {
+  return displays.length > 1
+}
+
 /** Find the display whose bounds contain the window center. */
 export function displayForWindow(window: WindowRect, displays: DisplayInfo[]): DisplayInfo | null {
   if (displays.length === 0) return null

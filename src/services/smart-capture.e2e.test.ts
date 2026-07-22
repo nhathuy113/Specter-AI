@@ -120,7 +120,7 @@ describe('coach pipeline e2e (capture → fingerprint → coach message)', () =>
   })
 
   it('game mode instant redirect when OCR is IDE chrome', () => {
-    const req = resolveCoachRequest('Cursor Specter GEMINI_API_KEY .env', 'game')
+    const req = resolveCoachRequest('Cursor Specter GEMINI_API_KEY .env', 'game', { displayCount: 2 })
     expect(req.kind).toBe('ide')
     expect(req.instantReply).toBeTruthy()
   })

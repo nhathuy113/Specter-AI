@@ -19,6 +19,7 @@ export interface CoachEvaluateInput {
   cooldownSec: number
   isStreaming: boolean
   assistantMode?: AssistantMode
+  displayCount?: number
 }
 
 export class CoachTriggerEvaluator {
@@ -27,7 +28,9 @@ export class CoachTriggerEvaluator {
 
   evaluate(input: CoachEvaluateInput): CoachEvaluateResult {
     const mode = input.assistantMode ?? 'general'
-    const ctx = extractScreenContext(input.ocrText, mode)
+    const ctx = extractScreenContext(input.ocrText, mode, {
+      displayCount: input.displayCount
+    })
 
     if (ctx.kind === 'empty' || !ctx.actionable) {
       return { action: 'skip', reason: 'non-actionable-screen', fingerprint: '' }
