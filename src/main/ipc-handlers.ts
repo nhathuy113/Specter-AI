@@ -4,14 +4,21 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { getSetting, setSetting, getAllSettings, getConversations, saveConversation, deleteConversation, clearConversations, isValidSetting } from '../services/store'
 import { streamCompletion, cancelStream, fetchAvailableModels, estimateCost, getCachedModels } from '../services/openrouter'
 import { streamOpenAICompletion, cancelOpenAIStream } from '../services/openai-api'
+import { streamGeminiCompletion, streamGeminiVisionCompletion, cancelGeminiStream, validateGeminiApiKey } from '../services/gemini-api'
+import { buildVisionUserTask } from '../services/perception'
 import { streamCodexCompletion, cancelCodexStream } from '../services/codex'
 import { buildSystemPrompt, buildUserMessage, estimateTokens } from '../services/context-builder'
+import { buildCoachSystemPrompt, resolveCoachRequest } from '../services/coach-prompt'
+import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
+import { checkAiConfig } from '../services/ai-config'
 import { captureScreenText, captureScreenOnly } from './screen-capture'
+import { syncContinuousCoach, stopContinuousCoach, setOverlayCoachStreaming } from './continuous-coach-loop'
 import { transcribeAudio, getTranscript, checkWhisperConfig } from './audio-capture'
 import { createDashboardWindow } from './dashboard-window'
 import { setOverlayOpacity } from './overlay-window'
 import { reRegisterHotkeys } from './hotkey-manager'
-import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS } from '../shared/constants'
+import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS, GEMINI_MODELS } from '../shared/constants'
+import type { AssistantMode, PerceptionMode, ScreenMetadata } from '../shared/types'
 import type { Playbook, Conversation } from '../shared/types'
 
 // --- Auto-capture timer ---
@@ -110,6 +117,10 @@ const OPENAI_MODEL_PRICING: Record<string, { prompt: string; completion: string 
   'chat-latest': { prompt: '0.000005', completion: '0.00003' }
 }
 
+const GEMINI_MODEL_PRICING: Record<string, { prompt: string; completion: string }> = Object.fromEntries(
+  GEMINI_MODELS.map((m) => [m.id, m.pricing])
+)
+
 function isValidQuery(query: unknown): query is string {
   return typeof query === 'string' && query.length > 0 && query.length <= 50000
 }
@@ -150,7 +161,17 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   // Store overlay reference for auto-capture
   autoCaptureOverlay = overlayWindow
   // AI Query — streaming with cost tracking
-  ipcMain.on(IPC_CHANNELS.AI_QUERY, async (event, args: { query: string; includeScreen: boolean; includeAudio: boolean; messageHistory?: Array<{ role: string; content: string }> }) => {
+  ipcMain.on(IPC_CHANNELS.AI_QUERY, async (event, args: {
+    query: string
+    includeScreen: boolean
+    includeAudio: boolean
+    messageHistory?: Array<{ role: string; content: string }>
+    screenTextOverride?: string
+    screenshotOverride?: string
+    useVisionOverride?: boolean
+    screenMetadata?: ScreenMetadata
+    coachMode?: boolean
+  }) => {
     // Rate limit
     if (!checkRateLimit(IPC_CHANNELS.AI_QUERY)) {
       event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, 'Too many requests. Please wait a moment.')
@@ -168,34 +189,51 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       return
     }
 
-    const aiProvider = getSetting<'openrouter' | 'openai' | 'codex'>('aiProvider') || DEFAULT_SETTINGS.aiProvider
+    const aiConfig = checkAiConfig()
+    if (!aiConfig.configured) {
+      event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, aiConfig.error || 'AI is not configured. Open Settings to continue.')
+      return
+    }
+
+    const aiProvider = aiConfig.provider
     const openrouterApiKey = getSetting<string>('openrouterApiKey')
     const openaiApiKey = getSetting<string>('openaiApiKey')
-    if (aiProvider === 'openrouter' && !openrouterApiKey) {
-      event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, 'No API key configured. Open Settings to add your OpenRouter API key.')
-      return
-    }
-    if (aiProvider === 'openai' && !openaiApiKey) {
-      event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, 'No OpenAI API key configured. Open Settings to add your OpenAI API key.')
-      return
-    }
+    const geminiApiKey = getSetting<string>('geminiApiKey')
 
     const model = aiProvider === 'codex'
       ? getSetting<string>('codexModel') || DEFAULT_SETTINGS.codexModel
       : aiProvider === 'openai'
         ? getSetting<string>('openaiModel') || DEFAULT_SETTINGS.openaiModel
+        : aiProvider === 'gemini'
+          ? getSetting<string>('geminiModel') || DEFAULT_SETTINGS.geminiModel
       : getSetting<string>('selectedModel') || DEFAULT_SETTINGS.selectedModel
-    const systemPrompt = getSetting<string>('systemPrompt')
+    const systemPrompt = args.coachMode
+      ? getSetting<string>('coachSystemPrompt')
+      : getSetting<string>('systemPrompt')
 
     let screenText = ''
+    let screenScreenshot: string | undefined
+    let useVision = false
+    let screenMetadata: ScreenMetadata = args.screenMetadata ?? {}
     let transcript = ''
 
-    // Capture screen if requested
-    if (args.includeScreen) {
+    if (typeof args.screenTextOverride === 'string' && args.screenTextOverride.trim()) {
+      screenText = args.screenTextOverride.trim()
+      screenScreenshot = args.screenshotOverride
+      useVision = args.useVisionOverride ?? false
+    } else if (args.includeScreen) {
       try {
         const smartCrop = getSetting<boolean>('smartCrop') || false
-        const capture = await captureScreenText(smartCrop)
+        const perceptionMode = (getSetting<string>('perceptionMode') || DEFAULT_SETTINGS.perceptionMode) as PerceptionMode
+        const capture = await captureScreenText(smartCrop, perceptionMode)
         screenText = capture.text
+        screenScreenshot = capture.screenshot
+        useVision = capture.useVision ?? false
+        screenMetadata = {
+          appName: capture.appName,
+          windowTitle: capture.windowTitle,
+          textSource: capture.textSource
+        }
       } catch (err: unknown) {
         console.warn('[Specter] Screen capture failed:', err)
       }
@@ -206,21 +244,24 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       transcript = getTranscript()
     }
 
-    // Get active playbooks and inject as context
-    const playbooks = getSetting<Playbook[]>('playbooks') || []
-    const activePlaybooks = playbooks.filter(p => p.isActive)
-    let playbookContext = ''
-    if (activePlaybooks.length > 0) {
-      playbookContext = activePlaybooks
-        .map(p => `[PLAYBOOK: ${p.name}]\n${p.content}`)
-        .join('\n\n')
-    }
+    const assistantMode = (getSetting<string>('assistantMode') || DEFAULT_SETTINGS.assistantMode) as AssistantMode
 
-    const userMessage = buildUserMessage({
-      screenText,
-      transcript,
-      userQuery: args.query
-    })
+    const playbooks = getSetting<Playbook[]>('playbooks') || []
+    const activePlaybooks = filterPlaybooksForMode(playbooks, assistantMode)
+    const playbookContext = buildPlaybookContext(activePlaybooks)
+
+    let coachInstantReply: string | undefined
+    const userMessage = args.coachMode
+      ? (() => {
+          const coachReq = resolveCoachRequest(screenText, assistantMode, screenMetadata)
+          coachInstantReply = coachReq.instantReply
+          return coachReq.userMessage
+        })()
+      : buildUserMessage({
+          screenText,
+          transcript,
+          userQuery: args.query
+        })
 
     const fullUserMessage = playbookContext
       ? `${playbookContext}\n\n${userMessage}`
@@ -228,7 +269,12 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
 
     // Build messages array: system prompt + conversation history + new user message
     const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
-      { role: 'system', content: buildSystemPrompt(systemPrompt) }
+      {
+        role: 'system',
+        content: args.coachMode
+          ? buildCoachSystemPrompt(systemPrompt, assistantMode)
+          : buildSystemPrompt(systemPrompt)
+      }
     ]
 
     // Add conversation history (last 10 messages max to stay within context limits)
@@ -242,7 +288,10 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     }
 
     // Add the new user message with full context
-    messages.push({ role: 'user', content: fullUserMessage })
+    const finalUserContent = useVision && !coachInstantReply
+      ? buildVisionUserTask(fullUserMessage)
+      : fullUserMessage
+    messages.push({ role: 'user', content: finalUserContent })
 
     // Estimate prompt tokens for cost tracking
     const promptTokens = estimateTokens(messages.map(m => m.content).join(' '))
@@ -259,11 +308,19 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
         if (!event.sender.isDestroyed()) {
           const completionTokens = estimateTokens(completionContent)
           const totalTokens = promptTokens + completionTokens
-          const modelLabel = aiProvider === 'codex' ? `codex/${model}` : aiProvider === 'openai' ? `openai/${model}` : model
+          const modelLabel = aiProvider === 'codex'
+            ? `codex/${model}`
+            : aiProvider === 'openai'
+              ? `openai/${model}`
+              : aiProvider === 'gemini'
+                ? `gemini/${model}`
+                : model
           const modelInfo = aiProvider === 'openrouter'
             ? DEFAULT_MODELS.find(m => m.id === model) || getCachedModels().find(m => m.id === model)
             : aiProvider === 'openai'
               ? { pricing: OPENAI_MODEL_PRICING[model] }
+              : aiProvider === 'gemini'
+                ? { pricing: GEMINI_MODEL_PRICING[model] }
               : undefined
           const promptPrice = modelInfo?.pricing?.prompt || '0'
           const completionPrice = modelInfo?.pricing?.completion || '0'
@@ -286,10 +343,22 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       }
     }
 
+    if (args.coachMode && coachInstantReply) {
+      streamCallbacks.onChunk(coachInstantReply)
+      streamCallbacks.onDone()
+      return
+    }
+
     if (aiProvider === 'codex') {
       await streamCodexCompletion(messages, model, streamCallbacks)
     } else if (aiProvider === 'openai') {
       await streamOpenAICompletion(messages, model, openaiApiKey, streamCallbacks)
+    } else if (aiProvider === 'gemini') {
+      if (useVision && screenScreenshot && !coachInstantReply) {
+        await streamGeminiVisionCompletion(messages, model, geminiApiKey, screenScreenshot, streamCallbacks)
+      } else {
+        await streamGeminiCompletion(messages, model, geminiApiKey, streamCallbacks)
+      }
     } else {
       await streamCompletion(messages, model, openrouterApiKey, streamCallbacks)
     }
@@ -299,6 +368,7 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   ipcMain.on(IPC_CHANNELS.AI_CANCEL, () => {
     cancelStream()
     cancelOpenAIStream()
+    cancelGeminiStream()
     cancelCodexStream()
   })
 
@@ -320,6 +390,18 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       const message = err instanceof Error ? err.message : 'Screen capture failed'
       throw new Error(message)
     }
+  })
+
+  // AI config check — called on overlay load and before AI actions
+  ipcMain.handle(IPC_CHANNELS.AI_CHECK_CONFIG, () => {
+    return checkAiConfig()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GEMINI_VALIDATE_KEY, async (_event, apiKey: unknown) => {
+    if (typeof apiKey !== 'string' || !apiKey.trim()) {
+      return { valid: false, error: 'API key is empty.' }
+    }
+    return validateGeminiApiKey(apiKey.trim())
   })
 
   // Audio config check — called before starting recording to give immediate feedback
@@ -383,6 +465,15 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     if (key === 'autoCapture' || key === 'autoCaptureInterval') {
       syncAutoCapture()
     }
+    if (
+      key === 'continuousCoach' ||
+      key === 'assistantMode' ||
+      key === 'perceptionMode' ||
+      key === 'detectIntervalSec' ||
+      key === 'coachCooldownSec'
+    ) {
+      syncContinuousCoach(overlayWindow)
+    }
     // Re-register hotkeys when hotkey settings change
     if (key === 'hotkeys') {
       reRegisterHotkeys()
@@ -436,8 +527,13 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     return APP_VERSION
   })
 
+  ipcMain.on(IPC_CHANNELS.COACH_STREAMING, (_event, args: { streaming?: boolean }) => {
+    setOverlayCoachStreaming(!!args?.streaming)
+  })
+
   ipcMain.on(IPC_CHANNELS.APP_QUIT, () => {
     stopAutoCapture()
+    stopContinuousCoach()
     app.quit()
   })
 
@@ -456,4 +552,5 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
 
   // Initialize auto-capture if enabled
   syncAutoCapture()
+  syncContinuousCoach(overlayWindow)
 }

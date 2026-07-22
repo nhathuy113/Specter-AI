@@ -4,7 +4,8 @@ import {
   BookOpen, Plus, Trash2, FileText, ToggleLeft, ToggleRight,
   Upload, X, Save, Loader2, AlertCircle
 } from 'lucide-react'
-import type { Playbook } from '../../../shared/types'
+import type { Playbook, AssistantMode } from '../../../shared/types'
+import { ASSISTANT_MODES, ASSISTANT_MODE_LABELS } from '../../../shared/constants'
 
 export default function Playbooks() {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
@@ -12,6 +13,7 @@ export default function Playbooks() {
   const [editingPlaybook, setEditingPlaybook] = useState<Playbook | null>(null)
   const [name, setName] = useState('')
   const [content, setContent] = useState('')
+  const [selectedModes, setSelectedModes] = useState<AssistantMode[]>([])
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -37,20 +39,24 @@ export default function Playbooks() {
     if (!name.trim() || !content.trim()) return
     setSaving(true)
     try {
-      const newPlaybook: Playbook = {
-        id: `pb-${Date.now()}`,
+      const playbookData = {
         name: name.trim(),
         content: content.trim(),
-        isActive: true,
-        createdAt: Date.now()
+        modes: selectedModes.length > 0 ? selectedModes : undefined
       }
 
       if (editingPlaybook) {
         const updated = playbooks.map((p) =>
-          p.id === editingPlaybook.id ? { ...p, name: name.trim(), content: content.trim() } : p
+          p.id === editingPlaybook.id ? { ...p, ...playbookData } : p
         )
         await savePlaybooks(updated)
       } else {
+        const newPlaybook: Playbook = {
+          id: `pb-${Date.now()}`,
+          ...playbookData,
+          isActive: true,
+          createdAt: Date.now()
+        }
         await savePlaybooks([...playbooks, newPlaybook])
       }
 
@@ -58,12 +64,13 @@ export default function Playbooks() {
       setEditingPlaybook(null)
       setName('')
       setContent('')
+      setSelectedModes([])
     } catch (err) {
       console.error('Failed to save playbook:', err)
     } finally {
       setSaving(false)
     }
-  }, [name, content, playbooks, editingPlaybook, savePlaybooks])
+  }, [name, content, selectedModes, playbooks, editingPlaybook, savePlaybooks])
 
   const handleDelete = useCallback(async (id: string) => {
     const updated = playbooks.filter((p) => p.id !== id)
@@ -81,6 +88,7 @@ export default function Playbooks() {
     setEditingPlaybook(playbook)
     setName(playbook.name)
     setContent(playbook.content)
+    setSelectedModes(playbook.modes ?? [])
     setShowEditor(true)
   }, [])
 
@@ -170,7 +178,7 @@ export default function Playbooks() {
         <div>
           <h2 className="text-xl font-semibold text-white/90">Playbooks</h2>
           <p className="text-sm text-white/40 mt-1">
-            Add context documents that get injected into AI queries
+            Context documents injected into AI queries (optionally scoped by assistant mode)
           </p>
         </div>
         <button
@@ -179,6 +187,7 @@ export default function Playbooks() {
             setEditingPlaybook(null)
             setName('')
             setContent('')
+            setSelectedModes([])
           }}
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/20 text-violet-300
                      text-sm hover:bg-violet-500/30 transition-colors"
@@ -215,6 +224,33 @@ export default function Playbooks() {
                        text-white/90 placeholder-white/20 focus:border-violet-500/40
                        focus:outline-none transition-colors"
           />
+
+          <div>
+            <label className="text-xs text-white/40 block mb-2">Assistant modes (empty = all modes)</label>
+            <div className="flex flex-wrap gap-2">
+              {ASSISTANT_MODES.map((mode) => {
+                const active = selectedModes.includes(mode)
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setSelectedModes((prev) =>
+                        active ? prev.filter((m) => m !== mode) : [...prev, mode]
+                      )
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                      active
+                        ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                        : 'bg-white/5 text-white/40 border border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           <textarea
             value={content}
@@ -302,6 +338,14 @@ export default function Playbooks() {
                       Disabled
                     </span>
                   )}
+                  {playbook.modes && playbook.modes.length > 0 && playbook.modes.map((mode) => (
+                    <span
+                      key={mode}
+                      className="text-[10px] text-violet-300/70 px-1.5 py-0.5 rounded bg-violet-500/10"
+                    >
+                      {ASSISTANT_MODE_LABELS[mode]}
+                    </span>
+                  ))}
                 </div>
                 <p className="text-xs text-white/20 mt-0.5 line-clamp-1 font-mono">
                   {playbook.content.slice(0, 100)}...

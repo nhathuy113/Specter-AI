@@ -32,6 +32,15 @@
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:e2e:live": "bash scripts/live-e2e.sh",
+    "test:gemini:live": "node scripts/test-gemini-live.mjs",
+    "test:coach:live": "vitest run --config vitest.live.config.ts",
+    "test:vision:live": "node scripts/test-vision-live.mjs",
+    "test:full:live": "bash scripts/test-full-live.sh",
+    "test:screen:live": "node scripts/test-secondary-screen-live.mjs",
+    "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
@@ -142,6 +151,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
+    "dotenv": "^17.4.2",
     "electron-store": "^8.2.0",
     "koffi": "^2.15.2",
     "lucide-react": "^0.460.0",
@@ -169,6 +179,7 @@
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^3.2.4"
   }
 }

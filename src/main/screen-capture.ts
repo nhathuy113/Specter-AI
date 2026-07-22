@@ -4,7 +4,17 @@ import { join } from 'path'
 import { execSync } from 'child_process'
 import screenshot from 'screenshot-desktop'
 import { screen } from 'electron'
-import type { ScreenCaptureResult } from '../shared/types'
+import type { ScreenCaptureResult, PerceptionMode } from '../shared/types'
+import { captureAccessibilityText } from '../services/accessibility-capture'
+import { resolvePerceptionPlan } from '../services/perception'
+import { getSetting } from '../services/store'
+import { DEFAULT_SETTINGS } from '../shared/constants'
+import {
+  resolveScreenshotScreenIndexForDisplay,
+  type DisplayInfo,
+  type SmartCropPlan
+} from '../services/display-capture'
+import { resolveSmartCapturePlan } from '../services/smart-capture'
 import { getOverlayWindow, showOverlay } from './overlay-window'
 
 let isCapturing = false
@@ -258,6 +268,39 @@ async function cropImageBuffer(
   }
 }
 
+async function captureDisplayScreenshot(displayIndex?: number): Promise<Buffer> {
+  if (displayIndex === undefined) {
+    return screenshot({ format: 'png' })
+  }
+  return screenshot({ format: 'png', screen: displayIndex })
+}
+
+function listElectronDisplays(): DisplayInfo[] {
+  const primaryId = screen.getPrimaryDisplay().id
+  return screen.getAllDisplays().map((d) => ({
+    id: d.id,
+    label: d.label,
+    bounds: d.bounds,
+    isPrimary: d.id === primaryId
+  }))
+}
+
+async function captureFromPlan(plan: SmartCropPlan): Promise<Buffer> {
+  const listDisplays = () => screenshot.listDisplays()
+  const screenIndex = await resolveScreenshotScreenIndexForDisplay(plan.display, listDisplays)
+  let imgBuffer = await captureDisplayScreenshot(screenIndex)
+
+  if (plan.type === 'window-crop') {
+    imgBuffer = await cropImageBuffer(
+      imgBuffer,
+      { ...plan.window, title: '' },
+      plan.display.bounds
+    )
+  }
+
+  return imgBuffer
+}
+
 /**
  * Capture the full screen and run OCR.
  * OCR runs in a separate worker thread so the main process (IPC, hotkeys, UI)
@@ -266,7 +309,10 @@ async function cropImageBuffer(
  *
  * @param activeWindowOnly - If true, attempt to crop to the active window's bounds
  */
-export async function captureScreenText(activeWindowOnly = false): Promise<ScreenCaptureResult> {
+export async function captureScreenText(
+  activeWindowOnly = false,
+  perceptionMode?: PerceptionMode
+): Promise<ScreenCaptureResult> {
   if (isCapturing) {
     throw new Error('Screen capture already in progress')
   }
@@ -277,22 +323,23 @@ export async function captureScreenText(activeWindowOnly = false): Promise<Scree
   let activeWindowBounds: WindowBounds | null = null
   if (activeWindowOnly) {
     activeWindowBounds = getActiveWindowBounds()
-    // Don't crop to our own overlay
-    if (activeWindowBounds?.title?.includes('Specter')) {
-      activeWindowBounds = null
-    }
   }
 
   const wasVisible = hideOverlayForCapture()
   try {
     if (wasVisible) await waitForRepaint()
 
-    let imgBuffer = await screenshot({ format: 'png' })
-
-    // Crop to active window if bounds were detected
-    if (activeWindowBounds) {
-      const primaryDisplay = screen.getPrimaryDisplay()
-      imgBuffer = await cropImageBuffer(imgBuffer, activeWindowBounds, primaryDisplay.bounds)
+    let imgBuffer: Buffer
+    if (activeWindowOnly) {
+      const displays = listElectronDisplays()
+      const plan = resolveSmartCapturePlan(activeWindowBounds, displays)
+      if (plan) {
+        imgBuffer = await captureFromPlan(plan)
+      } else {
+        imgBuffer = await captureDisplayScreenshot()
+      }
+    } else {
+      imgBuffer = await captureDisplayScreenshot()
     }
 
     const base64 = imgBuffer.toString('base64')
@@ -300,13 +347,22 @@ export async function captureScreenText(activeWindowOnly = false): Promise<Scree
     // Restore overlay immediately after screenshot (before slow OCR)
     if (wasVisible) restoreOverlay()
 
-    // Run OCR in worker thread — non-blocking
-    const text = await ocrInWorker(imgBuffer)
+    const mode = perceptionMode
+      ?? (getSetting<string>('perceptionMode') as PerceptionMode)
+      ?? DEFAULT_SETTINGS.perceptionMode
+
+    const axResult = mode === 'vision' ? null : captureAccessibilityText()
+    const ocrText = await ocrInWorker(imgBuffer)
+    const perception = resolvePerceptionPlan(mode, ocrText, axResult)
 
     return {
-      text,
+      text: perception.text,
       screenshot: base64,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      textSource: perception.textSource,
+      useVision: perception.useVision,
+      appName: perception.appName,
+      windowTitle: perception.windowTitle
     }
   } catch (err: unknown) {
     // Always restore overlay even if capture fails

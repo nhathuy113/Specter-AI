@@ -1,11 +1,17 @@
 // Shared type definitions for Specter AI
 
+import type { AssistantMode, PerceptionMode } from './constants'
+
+export type { AssistantMode, PerceptionMode }
+
 export interface UserSettings {
-  aiProvider: 'openrouter' | 'openai' | 'codex'
+  aiProvider: 'openrouter' | 'openai' | 'gemini' | 'codex'
   openrouterApiKey: string
   selectedModel: string
   openaiApiKey: string
   openaiModel: string
+  geminiApiKey: string
+  geminiModel: string
   codexModel: string
   overlayOpacity: number
   overlayPosition: { x: number; y: number }
@@ -18,6 +24,12 @@ export interface UserSettings {
   }
   autoCapture: boolean
   autoCaptureInterval: number
+  continuousCoach: boolean
+  detectIntervalSec: number
+  coachCooldownSec: number
+  assistantMode: AssistantMode
+  perceptionMode: PerceptionMode
+  coachSystemPrompt: string
   maxTranscriptLength: number
   systemPrompt: string
   language: string
@@ -76,8 +88,12 @@ export interface AudioStatus {
 
 export interface ScreenCaptureResult {
   text: string
-  screenshot?: string // base64
+  screenshot?: string // base64 png
   timestamp: number
+  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  useVision?: boolean
+  appName?: string
+  windowTitle?: string
 }
 
 export interface CostEstimate {
@@ -88,10 +104,18 @@ export interface CostEstimate {
   model: string
 }
 
+export interface ScreenMetadata {
+  appName?: string
+  windowTitle?: string
+  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+}
+
 export interface Playbook {
   id: string
   name: string
   content: string
   isActive: boolean
+  /** Empty or omitted = applies to all assistant modes */
+  modes?: AssistantMode[]
   createdAt: number
 }

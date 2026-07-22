@@ -2,7 +2,7 @@
 // API keys are encrypted via Electron safeStorage (OS keychain / DPAPI)
 import Store from 'electron-store'
 import { safeStorage } from 'electron'
-import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT } from '../shared/constants'
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_COACH_SYSTEM_PROMPT, ASSISTANT_MODES, PERCEPTION_MODES } from '../shared/constants'
 import type { UserSettings, Conversation } from '../shared/types'
 
 // --- Sensitive key handling via safeStorage ---
@@ -11,7 +11,7 @@ import type { UserSettings, Conversation } from '../shared/types'
 //   macOS → Keychain
 //   Windows → DPAPI (tied to user account)
 //   Linux → libsecret / gnome-keyring
-const SENSITIVE_KEYS = new Set(['openrouterApiKey', 'openaiApiKey', 'whisperApiKey'])
+const SENSITIVE_KEYS = new Set(['openrouterApiKey', 'openaiApiKey', 'geminiApiKey', 'whisperApiKey'])
 
 function encryptSensitive(value: string): string {
   if (!value) return ''
@@ -44,12 +44,14 @@ function decryptSensitive(stored: string): string {
 // --- Settings value validation ---
 
 const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
-  aiProvider: (v) => typeof v === 'string' && ['openrouter', 'openai', 'codex'].includes(v),
+  aiProvider: (v) => typeof v === 'string' && ['openrouter', 'openai', 'gemini', 'codex'].includes(v),
   openrouterApiKey: (v) => typeof v === 'string' && v.length <= 500,
   openaiApiKey: (v) => typeof v === 'string' && v.length <= 500,
+  geminiApiKey: (v) => typeof v === 'string' && v.length <= 500,
   whisperApiKey: (v) => typeof v === 'string' && v.length <= 500,
   selectedModel: (v) => typeof v === 'string' && v.length <= 200 && /^[a-zA-Z0-9/_.:@-]+$/.test(v),
   openaiModel: (v) => typeof v === 'string' && v.length <= 100 && /^[a-zA-Z0-9_.:-]+$/.test(v),
+  geminiModel: (v) => typeof v === 'string' && v.length <= 100 && /^[a-zA-Z0-9_.:-]+$/.test(v),
   codexModel: (v) => typeof v === 'string' && v.length <= 100 && /^[a-zA-Z0-9_.:-]+$/.test(v),
   overlayOpacity: (v) => typeof v === 'number' && v >= 0.3 && v <= 1.0,
   overlayPosition: (v) =>
@@ -67,12 +69,33 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   hotkeys: (v) => typeof v === 'object' && v !== null,
   autoCapture: (v) => typeof v === 'boolean',
   autoCaptureInterval: (v) => typeof v === 'number' && v >= 5 && v <= 3600,
+  continuousCoach: (v) => typeof v === 'boolean',
+  detectIntervalSec: (v) => typeof v === 'number' && v >= 3 && v <= 300,
+  coachCooldownSec: (v) => typeof v === 'number' && v >= 5 && v <= 300,
+  assistantMode: (v) => typeof v === 'string' && (ASSISTANT_MODES as readonly string[]).includes(v),
+  perceptionMode: (v) => typeof v === 'string' && (PERCEPTION_MODES as readonly string[]).includes(v),
+  coachSystemPrompt: (v) => typeof v === 'string' && v.length <= 10000,
   maxTranscriptLength: (v) => typeof v === 'number' && v >= 100 && v <= 100000,
   systemPrompt: (v) => typeof v === 'string' && v.length <= 10000,
   language: (v) => typeof v === 'string' && v.length <= 10 && /^[a-zA-Z-]+$/.test(v),
   theme: (v) => typeof v === 'string' && ['dark', 'light', 'glass'].includes(v),
   conversations: (v) => Array.isArray(v),
-  playbooks: (v) => Array.isArray(v),
+  playbooks: (v) => {
+    if (!Array.isArray(v)) return false
+    return v.every((item) => {
+      if (typeof item !== 'object' || item === null) return false
+      const p = item as Record<string, unknown>
+      if (typeof p.id !== 'string' || typeof p.name !== 'string' || typeof p.content !== 'string') return false
+      if (typeof p.isActive !== 'boolean' || typeof p.createdAt !== 'number') return false
+      if (p.modes !== undefined) {
+        if (!Array.isArray(p.modes)) return false
+        if (!p.modes.every((m) => typeof m === 'string' && (ASSISTANT_MODES as readonly string[]).includes(m))) {
+          return false
+        }
+      }
+      return true
+    })
+  },
   whisperProvider: (v) => typeof v === 'string' && ['groq', 'openai', 'custom'].includes(v),
   whisperApiUrl: (v) => typeof v === 'string' && v.length <= 500,
   whisperModel: (v) => typeof v === 'string' && v.length <= 200,
@@ -137,6 +160,8 @@ const schema = {
   selectedModel: { type: 'string' as const, default: DEFAULT_SETTINGS.selectedModel },
   openaiApiKey: { type: 'string' as const, default: DEFAULT_SETTINGS.openaiApiKey },
   openaiModel: { type: 'string' as const, default: DEFAULT_SETTINGS.openaiModel },
+  geminiApiKey: { type: 'string' as const, default: DEFAULT_SETTINGS.geminiApiKey },
+  geminiModel: { type: 'string' as const, default: DEFAULT_SETTINGS.geminiModel },
   codexModel: { type: 'string' as const, default: DEFAULT_SETTINGS.codexModel },
   overlayOpacity: { type: 'number' as const, default: DEFAULT_SETTINGS.overlayOpacity, minimum: 0.3, maximum: 1.0 },
   overlayPosition: {
@@ -161,6 +186,12 @@ const schema = {
   },
   autoCapture: { type: 'boolean' as const, default: DEFAULT_SETTINGS.autoCapture },
   autoCaptureInterval: { type: 'number' as const, default: DEFAULT_SETTINGS.autoCaptureInterval },
+  continuousCoach: { type: 'boolean' as const, default: DEFAULT_SETTINGS.continuousCoach },
+  detectIntervalSec: { type: 'number' as const, default: DEFAULT_SETTINGS.detectIntervalSec },
+  coachCooldownSec: { type: 'number' as const, default: DEFAULT_SETTINGS.coachCooldownSec },
+  assistantMode: { type: 'string' as const, default: DEFAULT_SETTINGS.assistantMode },
+  perceptionMode: { type: 'string' as const, default: DEFAULT_SETTINGS.perceptionMode },
+  coachSystemPrompt: { type: 'string' as const, default: DEFAULT_COACH_SYSTEM_PROMPT },
   maxTranscriptLength: { type: 'number' as const, default: DEFAULT_SETTINGS.maxTranscriptLength },
   systemPrompt: { type: 'string' as const, default: DEFAULT_SETTINGS.systemPrompt },
   language: { type: 'string' as const, default: DEFAULT_SETTINGS.language },
@@ -260,6 +291,8 @@ export function getAllSettings(): UserSettings {
     selectedModel: s.get('selectedModel') as string,
     openaiApiKey: decryptSensitive(s.get('openaiApiKey') as string),
     openaiModel: s.get('openaiModel') as string,
+    geminiApiKey: decryptSensitive(s.get('geminiApiKey') as string),
+    geminiModel: s.get('geminiModel') as string,
     codexModel: s.get('codexModel') as string,
     overlayOpacity: s.get('overlayOpacity') as number,
     overlayPosition: s.get('overlayPosition') as { x: number; y: number },
@@ -267,6 +300,12 @@ export function getAllSettings(): UserSettings {
     hotkeys: s.get('hotkeys') as UserSettings['hotkeys'],
     autoCapture: s.get('autoCapture') as boolean,
     autoCaptureInterval: s.get('autoCaptureInterval') as number,
+    continuousCoach: s.get('continuousCoach') as boolean,
+    detectIntervalSec: s.get('detectIntervalSec') as number,
+    coachCooldownSec: s.get('coachCooldownSec') as number,
+    assistantMode: s.get('assistantMode') as UserSettings['assistantMode'],
+    perceptionMode: s.get('perceptionMode') as UserSettings['perceptionMode'],
+    coachSystemPrompt: s.get('coachSystemPrompt') as string,
     maxTranscriptLength: s.get('maxTranscriptLength') as number,
     systemPrompt: s.get('systemPrompt') as string,
     language: s.get('language') as string,

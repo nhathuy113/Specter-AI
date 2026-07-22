@@ -5,6 +5,9 @@ import { createOverlayWindow, getOverlayWindow, showOverlay } from './overlay-wi
 import { createTray, destroyTray } from './tray'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
+import { bootstrapSettingsFromEnv, loadEnvFiles } from '../services/env-bootstrap'
+
+loadEnvFiles()
 
 // Catch unhandled errors globally — prevents crash from spawn ENOENT (e.g. missing sox)
 process.on('uncaughtException', (err) => {
@@ -25,6 +28,8 @@ if (!gotLock) {
 }
 
 app.whenReady().then(() => {
+  bootstrapSettingsFromEnv()
+
   // Set app user model id for Windows
   electronApp.setAppUserModelId('com.specter.ai')
 

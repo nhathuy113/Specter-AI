@@ -34,14 +34,14 @@
 
 ## What is Specter AI?
 
-Specter AI is a desktop application that overlays AI-powered assistance on your screen during meetings, interviews, and work sessions. The overlay is **invisible to screen-sharing software** (Zoom, Google Meet, Teams), so only you can see it.
+Specter AI is a **virtual screen assistant** — an always-on-top overlay that reads your screen (OCR), sends structured context to Gemini or OpenRouter, and recommends what to do next. You perform every action yourself.
 
-- Reads your screen via OCR and transcribes meeting audio in real time
-- Sends context to any AI model on OpenRouter (500+ models including GPT-4, Claude, Gemini, Llama, DeepSeek)
-- Streams responses into a translucent overlay that stays on top of all windows
-- Runs locally -- no data leaves your machine except the AI API call
+Originally a meeting copilot (Cluely alternative); this fork emphasizes **Analyze Screen**, **Watch mode**, and dual-monitor smart crop. Audio transcription is available but **optional**.
 
-Think of it as a free, open-source, privacy-first alternative to Cluely.
+- Reads your screen via OCR on demand or on an interval (Watch mode)
+- Sends context to Gemini (default), OpenRouter, OpenAI, or Codex (BYOK)
+- Streams responses into a translucent overlay invisible to most screen share
+- Runs locally except the AI API call
 
 ---
 
@@ -52,23 +52,29 @@ Think of it as a free, open-source, privacy-first alternative to Cluely.
 - Invisible to screen share on macOS (`type: 'panel'` + screen-saver level) and Windows (`setContentProtection`)
 - Draggable, collapsible to a small pill when not in use
 
-### Screen Reading (OCR)
-- Captures your screen on demand via global hotkey
-- Extracts text using Tesseract.js OCR in a worker thread (non-blocking)
-- Smart context: sends screen text as part of your AI prompt
+### Screen Assistant (core)
+- **Analyze Screen** — one click, no typing; context router picks the right prompt
+- **Watch mode** — continuous detect + fingerprint dedup + cooldown
+- **Assistant modes** — General, Work, Game, Custom (Settings)
+- Smart crop for dual monitor (game on external display)
+- **Hybrid perception:** macOS Accessibility + OCR; Gemini vision when text is thin (Auto) or always (Vision)
+- OCR via Tesseract.js in a worker thread
 
-### Live Audio Transcription
-- Records microphone audio in real time via the Web MediaRecorder API
-- Transcribes every 10 seconds using configurable Whisper provider (Groq, OpenAI, or custom endpoint)
-- Rolling transcript buffer (last ~60s of conversation) fed into AI context
+### Live Audio Transcription *(nice to have)*
+- Optional microphone → Whisper (Groq/OpenAI/custom)
+- Rolling transcript can be included when user asks with audio enabled
 
 ### AI Integration
-- Powered by [OpenRouter](https://openrouter.ai) -- access 500+ AI models with one API key
-- Streaming responses with real-time token count and cost display
-- Configurable system prompt and model selection
+- **Gemini** (default) via Google AI Studio key, or **OpenRouter** (500+ models)
+- Streaming responses with token count and cost display
+- Configurable system prompt and screen assistant prompt
+- Preflight check — clear error if API key missing
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan and [docs/TESTING.md](docs/TESTING.md) for the testing pyramid.
 
 ### Playbooks
 - Upload context documents (meeting prep, job descriptions, notes)
+- Scope playbooks to assistant modes (General / Work / Game / Custom)
 - Active playbooks are automatically injected into every AI prompt
 - Create, edit, toggle, and delete playbooks from the dashboard
 
@@ -128,13 +134,14 @@ pnpm run build:linux   # Linux
 
 1. **Launch Specter AI** -- the overlay appears in the top-right corner of your screen
 2. **Open Settings** (right-click the system tray icon > Settings, or use the dashboard)
-3. **Enter your OpenRouter API key** -- get one free at [openrouter.ai/keys](https://openrouter.ai/keys)
-4. **Select a model** -- `google/gemini-flash-1.5` is recommended for speed; `meta-llama/llama-3.1-8b-instruct:free` for free testing
+3. **Configure AI** — Gemini: paste `GEMINI_API_KEY` in Settings or `.env`. Or use OpenRouter.
+4. **Select assistant mode** — General (default), Work, Game, or Custom
 5. **Use it:**
-   - Type a question in the overlay and press Enter
-   - Press `Ctrl+Enter` to ask with screen context
-   - Press `Ctrl+Shift+Enter` to include a screenshot
-   - Press `Ctrl+Shift+Space` to start/stop audio transcription
+   - Click **Analyze Screen** in the overlay
+   - Type a question and press Enter
+   - Press `Ctrl+Enter` / `Cmd+Enter` to ask with screen context
+   - Enable **Watch** in Settings for continuous recommendations
+   - *(Optional)* `Ctrl+Shift+Space` for audio transcription
 
 ---
 
@@ -254,8 +261,15 @@ Browse all 500+ models at [openrouter.ai/models](https://openrouter.ai/models).
 # Start in development mode with hot reload
 pnpm dev
 
-# Type check
+# Type check + unit/e2e tests (fast — no live API)
 pnpm typecheck
+pnpm test
+
+# Live tests (macOS + .env with GEMINI_API_KEY)
+pnpm test:coach:live
+pnpm test:screen:live
+pnpm test:vision:live
+pnpm test:full:live   # all unit + live probes
 
 # Build renderer + main process
 pnpm build
@@ -274,7 +288,15 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-The app stores the API key in its Settings UI via `electron-store`, so `.env` is optional and only needed if you want to set it at build time.
+The app stores the API key in its Settings UI via `electron-store`. Optional `.env` seeds defaults on first launch:
+
+| Variable | Purpose |
+|----------|---------|
+| `GEMINI_API_KEY` | Google AI Studio key |
+| `GEMINI_MODEL` | e.g. `gemini-3.1-flash-lite` |
+| `AI_PROVIDER` | `gemini` (default), `openrouter`, etc. |
+| `ASSISTANT_MODE` | `general`, `work`, `game`, `custom` |
+| `PERCEPTION_MODE` | `auto`, `ocr`, `vision` |
 
 ---
 

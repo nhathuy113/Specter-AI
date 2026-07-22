@@ -40,6 +40,7 @@ export default function App() {
   const [includeScreen, setIncludeScreen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [setupError, setSetupError] = useState<string | null>(null)
   const [isCapturing, setIsCapturing] = useState(false)
   const [attachedScreenshot, setAttachedScreenshot] = useState<string | null>(null) // base64
   const [theme, setTheme] = useState<'dark' | 'light' | 'glass'>('dark')
@@ -83,6 +84,13 @@ export default function App() {
 
   // Auto-capture: latest screen text from main process timer
   const autoCaptureTextRef = useRef<string>('')
+  const isCoachQueryRef = useRef(false)
+
+  const finishCoachStreaming = useCallback(() => {
+    if (!isCoachQueryRef.current) return
+    isCoachQueryRef.current = false
+    window.specterAPI?.setCoachStreaming(false)
+  }, [])
 
   // Ref for stopRecording to avoid stale closure in setInterval
   const stopRecordingRef = useRef<() => void>(() => {})
@@ -106,6 +114,31 @@ export default function App() {
       if (typeof d === 'number' && d >= 0) setAutoHideDelay(d)
     })
   }, [])
+
+  const refreshSetupStatus = useCallback(async () => {
+    try {
+      const config = await window.specterAPI?.checkAiConfig()
+      if (config && !config.configured) {
+        setSetupError(config.error || 'AI is not configured. Open Settings to add your API key.')
+        return false
+      }
+      setSetupError(null)
+      return true
+    } catch {
+      return true
+    }
+  }, [])
+
+  const ensureAiConfigured = useCallback(async (): Promise<boolean> => {
+    return refreshSetupStatus()
+  }, [refreshSetupStatus])
+
+  // Surface missing API key as soon as the overlay opens (and after returning from Settings)
+  useEffect(() => {
+    void refreshSetupStatus()
+    window.addEventListener('focus', refreshSetupStatus)
+    return () => window.removeEventListener('focus', refreshSetupStatus)
+  }, [refreshSetupStatus])
 
   // Keep data-theme in sync when theme changes
   useEffect(() => {
@@ -389,10 +422,11 @@ export default function App() {
    * Submit handler — uses refs for hotkey compatibility.
    * Sends conversation history so the AI has context of prior exchanges.
    */
-  const doSubmit = useCallback((withScreen = false) => {
+  const doSubmit = useCallback(async (withScreen = false) => {
     const q = queryRef.current.trim()
     if (!q && !withScreen && !isRecordingRef.current) return
     if (isStreamingRef.current) return
+    if (!(await ensureAiConfigured())) return
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -420,22 +454,70 @@ export default function App() {
 
     // Clear attached screenshot after sending
     setAttachedScreenshot(null)
-  }, [getMessageHistory])
+  }, [getMessageHistory, ensureAiConfigured])
+
+  const triggerCoachAdvice = useCallback(async (payload: {
+    screenText: string
+    appName?: string
+    windowTitle?: string
+    useVision?: boolean
+    screenshot?: string
+  }) => {
+    if (isStreamingRef.current) return
+    if (!payload.screenText.trim()) return
+    if (!(await ensureAiConfigured())) return
+
+    isCoachQueryRef.current = true
+    window.specterAPI?.setCoachStreaming(true)
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: '[Coach] New screen state detected',
+      timestamp: Date.now()
+    }
+
+    const history = getMessageHistory()
+
+    setMessages((prev) => [...prev, userMessage])
+    setError(null)
+    setIsStreaming(true)
+    setStreamingContent('')
+    pendingCostRef.current = null
+
+    window.specterAPI?.queryAI(
+      'Recommend the next step based on the new screen content.',
+      false,
+      false,
+      history,
+      {
+        screenTextOverride: payload.screenText,
+        screenshotOverride: payload.screenshot,
+        useVisionOverride: payload.useVision,
+        screenMetadata: {
+          appName: payload.appName,
+          windowTitle: payload.windowTitle
+        },
+        coachMode: true
+      }
+    )
+  }, [getMessageHistory, ensureAiConfigured])
 
   /**
    * One-click "Analyze Screen" — captures screen + sends to AI automatically.
    * No text input needed. Just click and get AI analysis of what's on screen.
    */
-  const analyzeScreen = useCallback(() => {
+  const analyzeScreen = useCallback(async () => {
     if (isStreamingRef.current) return
     if (isCapturing) return
+    if (!(await ensureAiConfigured())) return
 
     setIsCapturing(true)
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: queryRef.current.trim() || 'Analyze what is on my screen and help me with it.',
+      content: '[Coach] Analyze screen',
       timestamp: Date.now()
     }
 
@@ -448,17 +530,17 @@ export default function App() {
     setStreamingContent('')
     pendingCostRef.current = null
 
-    // Always include screen for analyze
     window.specterAPI?.queryAI(
-      userMessage.content,
-      true, // always include screen
+      'Recommend what I should do next based on what is on screen.',
+      true,
       isRecordingRef.current,
-      history
+      history,
+      { coachMode: true }
     )
 
     setIsCapturing(false)
     setAttachedScreenshot(null)
-  }, [isCapturing, getMessageHistory])
+  }, [isCapturing, getMessageHistory, ensureAiConfigured])
 
   /**
    * Submit meeting transcript to AI — called by MeetingRecorder after transcription.
@@ -649,6 +731,7 @@ export default function App() {
       })
       setIsStreaming(false)
       pendingCostRef.current = null
+      finishCoachStreaming()
     })
 
     const unsubError = api.onStreamError((errMsg) => {
@@ -684,6 +767,7 @@ export default function App() {
       setError(displayError)
       setIsStreaming(false)
       setStreamingContent('')
+      finishCoachStreaming()
     })
 
     // Hotkey handlers use refs so they always see current state
@@ -703,6 +787,10 @@ export default function App() {
       autoCaptureTextRef.current = data.text
     })
 
+    const unsubCoachTrigger = api.onCoachTrigger((data) => {
+      triggerCoachAdvice(data)
+    })
+
     return () => {
       unsubChunk()
       unsubDone()
@@ -711,8 +799,9 @@ export default function App() {
       unsubHotkeyScreenshot()
       unsubHotkeyAudio()
       unsubAutoCapture()
+      unsubCoachTrigger()
     }
-  }, [doSubmit, toggleRecording])
+  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -810,6 +899,19 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {setupError && !showHistory && (
+        <div className="mx-4 mt-2 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 shrink-0">
+          <p className="text-amber-400 text-xs font-medium mb-1">Setup required</p>
+          <p className="text-amber-400/80 text-xs">{setupError}</p>
+          <button
+            onClick={() => window.specterAPI?.openDashboard()}
+            className="mt-1.5 text-[10px] text-amber-300 hover:text-amber-200 transition-colors underline"
+          >
+            Open Settings
+          </button>
+        </div>
+      )}
 
       {/* History drawer — slides over the messages area */}
       {showHistory && (

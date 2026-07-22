@@ -4,17 +4,26 @@ import {
   Key, Eye, EyeOff, Keyboard, Monitor, Sliders, MessageSquare,
   Save, RotateCcw, CheckCircle, AlertCircle, Loader2, Mic, Code2, ExternalLink
 } from 'lucide-react'
-import { OPENAI_API_KEYS_URL, OPENAI_API_PRICING_URL, OPENROUTER_KEYS_URL } from '../../../shared/constants'
+import { OPENAI_API_KEYS_URL, OPENAI_API_PRICING_URL, OPENROUTER_KEYS_URL, GEMINI_API_KEYS_URL, GEMINI_PRICING_URL, DEFAULT_SETTINGS, ASSISTANT_MODES, ASSISTANT_MODE_LABELS, PERCEPTION_MODES, PERCEPTION_MODE_LABELS } from '../../../shared/constants'
+import type { AssistantMode, PerceptionMode } from '../../../shared/types'
 
 interface SettingsState {
-  aiProvider: 'openrouter' | 'openai' | 'codex'
+  aiProvider: 'openrouter' | 'openai' | 'gemini' | 'codex'
   openrouterApiKey: string
   openaiApiKey: string
   openaiModel: string
+  geminiApiKey: string
+  geminiModel: string
   codexModel: string
   overlayOpacity: number
   autoCapture: boolean
   autoCaptureInterval: number
+  continuousCoach: boolean
+  detectIntervalSec: number
+  coachCooldownSec: number
+  assistantMode: AssistantMode
+  perceptionMode: PerceptionMode
+  coachSystemPrompt: string
   maxTranscriptLength: number
   systemPrompt: string
   language: string
@@ -35,14 +44,22 @@ interface SettingsState {
 }
 
 const DEFAULT_STATE: SettingsState = {
-  aiProvider: 'openrouter',
+  aiProvider: DEFAULT_SETTINGS.aiProvider,
   openrouterApiKey: '',
   openaiApiKey: '',
   openaiModel: 'gpt-5.5',
+  geminiApiKey: '',
+  geminiModel: 'gemini-3.1-flash-lite',
   codexModel: 'gpt-5.4',
   overlayOpacity: 0.85,
   autoCapture: false,
   autoCaptureInterval: 30,
+  continuousCoach: false,
+  detectIntervalSec: 3,
+  coachCooldownSec: 10,
+  assistantMode: 'general',
+  perceptionMode: 'auto',
+  coachSystemPrompt: '',
   maxTranscriptLength: 5000,
   systemPrompt: '',
   language: 'en',
@@ -58,18 +75,22 @@ const DEFAULT_STATE: SettingsState = {
   whisperApiUrl: '',
   whisperModel: '',
   autoHideDelay: 0,
-  smartCrop: false
+  smartCrop: true
 }
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsState>(DEFAULT_STATE)
   const [showApiKey, setShowApiKey] = useState(false)
   const [showOpenAIKey, setShowOpenAIKey] = useState(false)
+  const [showGeminiKey, setShowGeminiKey] = useState(false)
   const [showWhisperKey, setShowWhisperKey] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [validatingKey, setValidatingKey] = useState(false)
   const [keyValid, setKeyValid] = useState<boolean | null>(null)
+  const [validatingGeminiKey, setValidatingGeminiKey] = useState(false)
+  const [geminiKeyValid, setGeminiKeyValid] = useState<boolean | null>(null)
+  const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Hotkey recording state
@@ -85,14 +106,22 @@ export default function Settings() {
     try {
       const all = await window.specterAPI.getAllSettings() as unknown as SettingsState
       setSettings({
-        aiProvider: all.aiProvider || 'openrouter',
+        aiProvider: all.aiProvider || DEFAULT_SETTINGS.aiProvider,
         openrouterApiKey: all.openrouterApiKey || '',
         openaiApiKey: all.openaiApiKey || '',
         openaiModel: all.openaiModel || 'gpt-5.5',
+        geminiApiKey: all.geminiApiKey || '',
+        geminiModel: all.geminiModel || 'gemini-2.5-flash',
         codexModel: all.codexModel || 'gpt-5.4',
         overlayOpacity: all.overlayOpacity || 0.85,
         autoCapture: all.autoCapture || false,
         autoCaptureInterval: all.autoCaptureInterval || 30,
+        continuousCoach: all.continuousCoach || false,
+        detectIntervalSec: all.detectIntervalSec || 3,
+        coachCooldownSec: all.coachCooldownSec || 10,
+        assistantMode: all.assistantMode || 'general',
+        perceptionMode: all.perceptionMode || 'auto',
+        coachSystemPrompt: all.coachSystemPrompt || '',
         maxTranscriptLength: all.maxTranscriptLength || 5000,
         systemPrompt: all.systemPrompt || '',
         language: all.language || 'en',
@@ -119,10 +148,18 @@ export default function Settings() {
       await api.setSetting('openrouterApiKey', settings.openrouterApiKey)
       await api.setSetting('openaiApiKey', settings.openaiApiKey)
       await api.setSetting('openaiModel', settings.openaiModel)
+      await api.setSetting('geminiApiKey', settings.geminiApiKey)
+      await api.setSetting('geminiModel', settings.geminiModel)
       await api.setSetting('codexModel', settings.codexModel)
       await api.setSetting('overlayOpacity', settings.overlayOpacity)
       await api.setSetting('autoCapture', settings.autoCapture)
       await api.setSetting('autoCaptureInterval', settings.autoCaptureInterval)
+      await api.setSetting('continuousCoach', settings.continuousCoach)
+      await api.setSetting('detectIntervalSec', settings.detectIntervalSec)
+      await api.setSetting('coachCooldownSec', settings.coachCooldownSec)
+      await api.setSetting('assistantMode', settings.assistantMode)
+      await api.setSetting('perceptionMode', settings.perceptionMode)
+      await api.setSetting('coachSystemPrompt', settings.coachSystemPrompt)
       await api.setSetting('maxTranscriptLength', settings.maxTranscriptLength)
       await api.setSetting('systemPrompt', settings.systemPrompt)
       await api.setSetting('language', settings.language)
@@ -158,6 +195,23 @@ export default function Settings() {
       setValidatingKey(false)
     }
   }, [settings.openrouterApiKey])
+
+  const handleValidateGeminiKey = useCallback(async () => {
+    if (!settings.geminiApiKey.trim()) return
+    setValidatingGeminiKey(true)
+    setGeminiKeyValid(null)
+    setGeminiKeyError(null)
+    try {
+      const result = await window.specterAPI.validateGeminiKey(settings.geminiApiKey)
+      setGeminiKeyValid(result.valid)
+      setGeminiKeyError(result.valid ? null : (result.error || 'Invalid API key'))
+    } catch {
+      setGeminiKeyValid(false)
+      setGeminiKeyError('Could not validate API key. Check your network connection.')
+    } finally {
+      setValidatingGeminiKey(false)
+    }
+  }, [settings.geminiApiKey])
 
   const handleReset = useCallback(async () => {
     setSettings(DEFAULT_STATE)
@@ -252,9 +306,10 @@ export default function Settings() {
           <Code2 className="w-4 h-4 text-violet-400" />
           <h3 className="text-sm font-medium">AI Backend</h3>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {([
-            { value: 'openrouter', label: 'OpenRouter', desc: 'API key' },
+            { value: 'gemini', label: 'Gemini', desc: 'Google AI Studio' },
+            { value: 'openrouter', label: 'OpenRouter', desc: 'Multi-model gateway' },
             { value: 'openai', label: 'OpenAI API', desc: 'GPT credits' },
             { value: 'codex', label: 'Codex Plan', desc: 'ChatGPT login' }
           ] as const).map((provider) => (
@@ -407,6 +462,102 @@ export default function Settings() {
         </section>
       )}
 
+      {settings.aiProvider === 'gemini' && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 text-white/60">
+            <Key className="w-4 h-4 text-violet-400" />
+            <h3 className="text-sm font-medium">Gemini API Key</h3>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm text-white/50 block mb-2">Google AI Studio API Key</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showGeminiKey ? 'text' : 'password'}
+                    value={settings.geminiApiKey}
+                    onChange={(e) => {
+                      updateSetting('geminiApiKey', e.target.value)
+                      setGeminiKeyValid(null)
+                      setGeminiKeyError(null)
+                    }}
+                    placeholder="AIza..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                               text-white/90 placeholder-white/20 focus:border-violet-500/40
+                               focus:outline-none transition-colors"
+                  />
+                  <button
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+                  >
+                    {showGeminiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button
+                  onClick={handleValidateGeminiKey}
+                  disabled={validatingGeminiKey || !settings.geminiApiKey.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-violet-500/20 text-violet-300 text-sm
+                             hover:bg-violet-500/30 disabled:opacity-30 disabled:cursor-not-allowed
+                             transition-colors flex items-center gap-2"
+                >
+                  {validatingGeminiKey ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : geminiKeyValid === true ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  ) : geminiKeyValid === false ? (
+                    <AlertCircle className="w-4 h-4 text-red-400" />
+                  ) : null}
+                  Validate
+                </button>
+              </div>
+              {geminiKeyValid === true && (
+                <p className="text-emerald-400 text-xs mt-1.5">API key is valid</p>
+              )}
+              {geminiKeyValid === false && (
+                <p className="text-red-400 text-xs mt-1.5">
+                  {geminiKeyError || 'Invalid API key. Check your key and try again.'}
+                </p>
+              )}
+              <p className="text-white/20 text-xs mt-1.5">
+                Free tier available. Get your key from{' '}
+                <button
+                  type="button"
+                  onClick={() => openExternal(GEMINI_API_KEYS_URL)}
+                  className="inline-flex items-center gap-1 text-violet-400/60 hover:text-violet-300 transition-colors"
+                >
+                  aistudio.google.com/apikey
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm text-white/50 block mb-2">Gemini Model</label>
+              <input
+                type="text"
+                value={settings.geminiModel}
+                onChange={(e) => updateSetting('geminiModel', e.target.value)}
+                placeholder="gemini-3.1-flash-lite"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                           text-white/90 placeholder-white/20 focus:border-violet-500/40
+                           focus:outline-none transition-colors"
+              />
+              <p className="text-white/20 text-xs mt-1.5">
+                Recommended: <span className="font-mono text-white/35">gemini-3.1-flash-lite</span> for continuous coach.{' '}
+                <button
+                  type="button"
+                  onClick={() => openExternal(GEMINI_PRICING_URL)}
+                  className="inline-flex items-center gap-1 text-violet-400/60 hover:text-violet-300 transition-colors"
+                >
+                  View pricing
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {settings.aiProvider === 'codex' && (
         <section className="space-y-4">
           <div className="flex items-center gap-2 text-white/60">
@@ -433,15 +584,18 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Audio Transcription (Whisper) */}
-      <section className="space-y-4">
+      {/* Audio Transcription (Whisper) — nice to have */}
+      <section className="space-y-4 opacity-90">
         <div className="flex items-center gap-2 text-white/60">
           <Mic className="w-4 h-4 text-violet-400" />
           <h3 className="text-sm font-medium">Audio Transcription (Whisper)</h3>
+          <span className="text-[10px] uppercase tracking-wide text-white/30 bg-white/5 px-2 py-0.5 rounded-full">
+            Nice to have
+          </span>
         </div>
         <div className="space-y-4">
           <p className="text-white/30 text-xs leading-relaxed">
-            Audio transcription requires a Whisper-compatible API.
+            Optional. Core product is the screen assistant (OCR + Gemini). When configured, audio adds meeting transcript context.
             Groq offers a <strong className="text-white/50">free</strong> Whisper endpoint &mdash;
             get a key at <span className="text-violet-400/60">console.groq.com</span>
           </p>
@@ -661,7 +815,9 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div>
               <label className="text-sm text-white/50">Smart Crop</label>
-              <p className="text-xs text-white/20 mt-0.5">Capture only the active window instead of the full screen</p>
+              <p className="text-xs text-white/20 mt-0.5">
+                Auto-detects monitors: single screen crops the focused window; dual setup captures the external display when IDE is focused on laptop.
+              </p>
             </div>
             <button
               onClick={() => updateSetting('smartCrop', !settings.smartCrop)}
@@ -692,6 +848,111 @@ export default function Settings() {
                            text-white/90 focus:border-violet-500/40 focus:outline-none w-32"
               />
             </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm text-white/50">Continuous coach (Watch)</label>
+              <p className="text-xs text-white/20 mt-0.5">Auto-detect screen changes and recommend next steps (default off)</p>
+            </div>
+            <button
+              onClick={() => updateSetting('continuousCoach', !settings.continuousCoach)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                settings.continuousCoach ? 'bg-violet-500' : 'bg-white/10'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  settings.continuousCoach ? 'translate-x-[22px]' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div>
+            <label className="text-sm text-white/50 block mb-2">Perception</label>
+            <p className="text-xs text-white/20 mb-2">
+              Auto merges macOS Accessibility + OCR; sends screenshot to Gemini when text is thin (vision requires Gemini provider).
+            </p>
+            <select
+              value={settings.perceptionMode}
+              onChange={(e) => updateSetting('perceptionMode', e.target.value as PerceptionMode)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                         text-white/90 focus:border-violet-500/40 focus:outline-none"
+            >
+              {PERCEPTION_MODES.map((mode) => (
+                <option key={mode} value={mode} className="bg-zinc-900">
+                  {PERCEPTION_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-sm text-white/50 block mb-2">Assistant mode</label>
+            <p className="text-xs text-white/20 mb-2">
+              Shapes Analyze Screen and Watch behavior. Game mode skips IDE-only screens when watching.
+            </p>
+            <select
+              value={settings.assistantMode}
+              onChange={(e) => updateSetting('assistantMode', e.target.value as AssistantMode)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                         text-white/90 focus:border-violet-500/40 focus:outline-none"
+            >
+              {ASSISTANT_MODES.map((mode) => (
+                <option key={mode} value={mode} className="bg-zinc-900">
+                  {ASSISTANT_MODE_LABELS[mode]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-sm text-white/50 block mb-2">Screen assistant prompt</label>
+            <p className="text-xs text-white/20 mb-2">
+              Used for Analyze Screen and Watch. Leave blank for the default virtual assistant prompt.
+            </p>
+            <textarea
+              value={settings.coachSystemPrompt}
+              onChange={(e) => updateSetting('coachSystemPrompt', e.target.value)}
+              rows={5}
+              placeholder="Leave blank to use the default recommend-only assistant prompt"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm
+                         text-white/90 focus:border-violet-500/40 focus:outline-none resize-y"
+            />
+          </div>
+
+          {settings.continuousCoach && (
+            <>
+              <div>
+                <label className="text-sm text-white/50 block mb-2">
+                  Detect interval (seconds)
+                </label>
+                <input
+                  type="number"
+                  min="3"
+                  max="300"
+                  value={settings.detectIntervalSec}
+                  onChange={(e) => updateSetting('detectIntervalSec', parseInt(e.target.value) || 3)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                             text-white/90 focus:border-violet-500/40 focus:outline-none w-32"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/50 block mb-2">
+                  Coach cooldown (seconds)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="300"
+                  value={settings.coachCooldownSec}
+                  onChange={(e) => updateSetting('coachCooldownSec', parseInt(e.target.value) || 10)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                             text-white/90 focus:border-violet-500/40 focus:outline-none w-32"
+                />
+              </div>
+            </>
           )}
 
           <div>

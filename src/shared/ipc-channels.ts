@@ -8,6 +8,8 @@ export const IPC_CHANNELS = {
   OVERLAY_SET_OPACITY: 'overlay:set-opacity',
 
   // AI
+  AI_CHECK_CONFIG: 'ai:check-config',
+  GEMINI_VALIDATE_KEY: 'gemini:validate-key',
   AI_QUERY: 'ai:query',
   AI_STREAM_CHUNK: 'ai:stream-chunk',
   AI_STREAM_DONE: 'ai:stream-done',
@@ -53,6 +55,10 @@ export const IPC_CHANNELS = {
 
   // Auto-capture
   AUTO_CAPTURE_UPDATE: 'auto-capture:update',
+
+  // Continuous coach
+  COACH_TRIGGER: 'coach:trigger',
+  COACH_STREAMING: 'coach:streaming',
 
   // Conversations
   CONVERSATIONS_LIST: 'conversations:list',

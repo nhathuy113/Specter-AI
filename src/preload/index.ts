@@ -9,9 +9,25 @@ export interface StreamDoneData {
   model: string
 }
 
+export interface QueryAIOptions {
+  screenTextOverride?: string
+  screenshotOverride?: string
+  useVisionOverride?: boolean
+  screenMetadata?: { appName?: string; windowTitle?: string; textSource?: string }
+  coachMode?: boolean
+}
+
 export interface SpecterAPI {
   // AI
-  queryAI: (query: string, includeScreen: boolean, includeAudio: boolean, messageHistory?: Array<{ role: string; content: string }>) => void
+  checkAiConfig: () => Promise<{ configured: boolean; provider: string; error?: string }>
+  validateGeminiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  queryAI: (
+    query: string,
+    includeScreen: boolean,
+    includeAudio: boolean,
+    messageHistory?: Array<{ role: string; content: string }>,
+    options?: QueryAIOptions
+  ) => void
   cancelAI: () => void
   onStreamChunk: (callback: (chunk: string) => void) => () => void
   onStreamDone: (callback: (data: StreamDoneData) => void) => () => void
@@ -43,6 +59,17 @@ export interface SpecterAPI {
 
   // Auto-capture
   onAutoCaptureUpdate: (callback: (data: { text: string; timestamp: number }) => void) => () => void
+
+  // Continuous coach
+  onCoachTrigger: (callback: (data: {
+    screenText: string
+    timestamp: number
+    appName?: string
+    windowTitle?: string
+    useVision?: boolean
+    screenshot?: string
+  }) => void) => () => void
+  setCoachStreaming: (streaming: boolean) => void
 
   // Dashboard
   openDashboard: () => void
@@ -91,9 +118,25 @@ function isAudioStatus(v: unknown): v is { isRecording: boolean; duration: numbe
 
 const api: SpecterAPI = {
   // AI
-  queryAI: (query, includeScreen, includeAudio, messageHistory) => {
+  checkAiConfig: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.AI_CHECK_CONFIG) as Promise<{ configured: boolean; provider: string; error?: string }>
+  },
+  validateGeminiKey: (apiKey: string) => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GEMINI_VALIDATE_KEY, apiKey) as Promise<{ valid: boolean; error?: string }>
+  },
+  queryAI: (query, includeScreen, includeAudio, messageHistory, options) => {
     if (typeof query !== 'string') return
-    ipcRenderer.send(IPC_CHANNELS.AI_QUERY, { query, includeScreen: !!includeScreen, includeAudio: !!includeAudio, messageHistory: messageHistory || [] })
+    ipcRenderer.send(IPC_CHANNELS.AI_QUERY, {
+      query,
+      includeScreen: !!includeScreen,
+      includeAudio: !!includeAudio,
+      messageHistory: messageHistory || [],
+      screenTextOverride: options?.screenTextOverride,
+      screenshotOverride: options?.screenshotOverride,
+      useVisionOverride: options?.useVisionOverride,
+      screenMetadata: options?.screenMetadata,
+      coachMode: !!options?.coachMode
+    })
   },
   cancelAI: () => {
     ipcRenderer.send(IPC_CHANNELS.AI_CANCEL)
@@ -198,6 +241,30 @@ const api: SpecterAPI = {
     }
     ipcRenderer.on(IPC_CHANNELS.AUTO_CAPTURE_UPDATE, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.AUTO_CAPTURE_UPDATE, handler)
+  },
+
+  onCoachTrigger: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
+      if (typeof data === 'object' && data !== null) {
+        const d = data as Record<string, unknown>
+        if (typeof d.screenText === 'string' && typeof d.timestamp === 'number') {
+          callback({
+            screenText: d.screenText,
+            timestamp: d.timestamp,
+            appName: typeof d.appName === 'string' ? d.appName : undefined,
+            windowTitle: typeof d.windowTitle === 'string' ? d.windowTitle : undefined,
+            useVision: typeof d.useVision === 'boolean' ? d.useVision : undefined,
+            screenshot: typeof d.screenshot === 'string' ? d.screenshot : undefined
+          })
+        }
+      }
+    }
+    ipcRenderer.on(IPC_CHANNELS.COACH_TRIGGER, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.COACH_TRIGGER, handler)
+  },
+
+  setCoachStreaming: (streaming) => {
+    ipcRenderer.send(IPC_CHANNELS.COACH_STREAMING, { streaming: !!streaming })
   },
 
   // Conversations

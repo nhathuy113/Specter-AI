@@ -4,9 +4,9 @@ import {
   Cpu, Search, Check, DollarSign, Hash,
   Loader2, RefreshCw, Star, ChevronDown, ChevronUp
 } from 'lucide-react'
-import { DEFAULT_SETTINGS } from '../../../shared/constants'
+import { DEFAULT_SETTINGS, GEMINI_MODELS } from '../../../shared/constants'
 
-type AiProvider = 'openrouter' | 'openai' | 'codex'
+type AiProvider = 'openrouter' | 'openai' | 'gemini' | 'codex'
 
 interface Model {
   id: string
@@ -17,9 +17,18 @@ interface Model {
 }
 
 const PROVIDERS: Array<{ value: AiProvider; label: string; desc: string }> = [
-  { value: 'openrouter', label: 'OpenRouter', desc: 'API key' },
+  { value: 'gemini', label: 'Gemini', desc: 'Google AI Studio' },
+  { value: 'openrouter', label: 'OpenRouter', desc: 'Multi-model gateway' },
   { value: 'openai', label: 'OpenAI API', desc: 'GPT credits' },
   { value: 'codex', label: 'Codex Plan', desc: 'ChatGPT login' }
+]
+
+const GEMINI_RECOMMENDED_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+  'gemini-2.0-flash'
 ]
 
 const OPENROUTER_RECOMMENDED_MODELS = [
@@ -96,6 +105,14 @@ const OPENROUTER_DEFAULT_MODELS: Model[] = [
   }
 ]
 
+const GEMINI_MODEL_LIST: Model[] = GEMINI_MODELS.map((m) => ({
+  id: m.id,
+  name: m.name,
+  pricing: m.pricing,
+  context_length: m.context_length,
+  description: m.description
+}))
+
 const OPENAI_MODELS: Model[] = [
   {
     id: 'gpt-5.5',
@@ -165,26 +182,30 @@ const CODEX_MODELS: Model[] = [
   }
 ]
 
-function modelSettingKey(provider: AiProvider): 'selectedModel' | 'openaiModel' | 'codexModel' {
+function modelSettingKey(provider: AiProvider): 'selectedModel' | 'openaiModel' | 'geminiModel' | 'codexModel' {
   if (provider === 'openai') return 'openaiModel'
+  if (provider === 'gemini') return 'geminiModel'
   if (provider === 'codex') return 'codexModel'
   return 'selectedModel'
 }
 
 function defaultModelFor(provider: AiProvider): string {
   if (provider === 'openai') return DEFAULT_SETTINGS.openaiModel
+  if (provider === 'gemini') return DEFAULT_SETTINGS.geminiModel
   if (provider === 'codex') return DEFAULT_SETTINGS.codexModel
   return DEFAULT_SETTINGS.selectedModel
 }
 
 function modelsFor(provider: AiProvider, fetchedModels: Model[]): Model[] {
   if (provider === 'openai') return OPENAI_MODELS
+  if (provider === 'gemini') return GEMINI_MODEL_LIST
   if (provider === 'codex') return CODEX_MODELS
   return fetchedModels.length > 0 ? fetchedModels : OPENROUTER_DEFAULT_MODELS
 }
 
 function recommendedFor(provider: AiProvider): string[] {
   if (provider === 'openai') return OPENAI_RECOMMENDED_MODELS
+  if (provider === 'gemini') return GEMINI_RECOMMENDED_MODELS
   if (provider === 'codex') return CODEX_RECOMMENDED_MODELS
   return OPENROUTER_RECOMMENDED_MODELS
 }
@@ -204,7 +225,7 @@ function formatContextLength(len: number): string {
 }
 
 export default function Models() {
-  const [aiProvider, setAiProvider] = useState<AiProvider>('openrouter')
+  const [aiProvider, setAiProvider] = useState<AiProvider>(DEFAULT_SETTINGS.aiProvider)
   const [models, setModels] = useState<Model[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -215,7 +236,7 @@ export default function Models() {
 
   const loadCurrentModel = useCallback(async () => {
     try {
-      const provider = await window.specterAPI.getSetting<AiProvider>('aiProvider') || 'openrouter'
+      const provider = await window.specterAPI.getSetting<AiProvider>('aiProvider') || DEFAULT_SETTINGS.aiProvider
       const key = modelSettingKey(provider)
       const model = await window.specterAPI.getSetting<string>(key)
       setAiProvider(provider)
@@ -306,7 +327,7 @@ export default function Models() {
         </p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {PROVIDERS.map((item) => (
           <button
             key={item.value}

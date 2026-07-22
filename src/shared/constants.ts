@@ -36,6 +36,37 @@ Priority:
 - Follow explicit user formatting instructions over the defaults above.
 - Prefer the most recent visible question or spoken request when context contains multiple topics.`
 
+export const DEFAULT_COACH_SYSTEM_PROMPT = `You are a virtual screen assistant. The user performs every click and keystroke — you recommend only.
+
+Rules:
+- Read the screen context provided. Be direct and useful.
+- Reply with 1-3 short bullets: situation → suggested next step → optional watch-out.
+- Quote specific text, numbers, or errors from the screen when visible.
+- Never claim you clicked, typed, or completed anything.
+- Never mention API keys, Specter settings, or developer setup unless the user is clearly configuring those.
+- If context is insufficient, say what is missing in one sentence.
+- Be concise. No filler or meta-commentary.
+- Never reveal you are an AI assistant unless directly asked.`
+
+export const ASSISTANT_MODES = ['general', 'work', 'game', 'custom'] as const
+export type AssistantMode = (typeof ASSISTANT_MODES)[number]
+
+export const ASSISTANT_MODE_LABELS: Record<AssistantMode, string> = {
+  general: 'General — help with whatever is on screen',
+  work: 'Work — prioritize coding and debugging',
+  game: 'Game — prioritize gameplay; skip IDE-only screens when watching',
+  custom: 'Custom — use your coach system prompt as-is'
+}
+
+export const PERCEPTION_MODES = ['auto', 'ocr', 'vision'] as const
+export type PerceptionMode = (typeof PERCEPTION_MODES)[number]
+
+export const PERCEPTION_MODE_LABELS: Record<PerceptionMode, string> = {
+  auto: 'Auto — OCR + Accessibility, vision when text is thin',
+  ocr: 'OCR only — text extraction, no image to model',
+  vision: 'Vision — always send screenshot to Gemini multimodal'
+}
+
 export const DEFAULT_HOTKEYS = {
   askAI: 'CommandOrControl+Return',
   toggleOverlay: 'CommandOrControl+\\',
@@ -95,12 +126,52 @@ export const DEFAULT_MODELS = [
   }
 ]
 
+export const GEMINI_MODELS = [
+  {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite (Recommended)',
+    pricing: { prompt: '0.00000025', completion: '0.0000015' },
+    context_length: 1048576,
+    description: 'Fastest/cheapest Gemini 3 — best for continuous screen coach'
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    pricing: { prompt: '0.0000003', completion: '0.0000025' },
+    context_length: 1048576,
+    description: 'Previous-gen fast model'
+  },
+  {
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash Lite',
+    pricing: { prompt: '0.0000001', completion: '0.0000004' },
+    context_length: 1048576,
+    description: 'Cheapest high-volume classification and extraction'
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    pricing: { prompt: '0.00000125', completion: '0.00001' },
+    context_length: 1048576,
+    description: 'Stronger reasoning for complex screen context'
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    pricing: { prompt: '0.0000001', completion: '0.0000004' },
+    context_length: 1048576,
+    description: 'Previous-gen cost leader'
+  }
+] as const
+
 export const DEFAULT_SETTINGS = {
-  aiProvider: 'openrouter' as 'openrouter' | 'openai' | 'codex',
+  aiProvider: 'gemini' as 'openrouter' | 'openai' | 'gemini' | 'codex',
   openrouterApiKey: '',
   selectedModel: 'google/gemini-3-flash-preview',
   openaiApiKey: '',
   openaiModel: 'gpt-5.5',
+  geminiApiKey: '',
+  geminiModel: 'gemini-3.1-flash-lite',
   codexModel: 'gpt-5.4',
   overlayOpacity: 0.85,
   overlayPosition: { x: -1, y: -1 }, // -1 means auto-position
@@ -108,6 +179,12 @@ export const DEFAULT_SETTINGS = {
   hotkeys: DEFAULT_HOTKEYS,
   autoCapture: false,
   autoCaptureInterval: 30,
+  continuousCoach: false,
+  detectIntervalSec: 3,
+  coachCooldownSec: 10,
+  assistantMode: 'general' as AssistantMode,
+  perceptionMode: 'auto' as PerceptionMode,
+  coachSystemPrompt: DEFAULT_COACH_SYSTEM_PROMPT,
   maxTranscriptLength: 5000,
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   language: 'en',
@@ -118,7 +195,7 @@ export const DEFAULT_SETTINGS = {
   whisperApiUrl: '',        // only used when provider is 'custom'
   whisperModel: '',         // only used when provider is 'custom'
   autoHideDelay: 0,          // seconds, 0 = disabled
-  smartCrop: false            // capture active window only (vs full screen)
+  smartCrop: true            // auto-detect single/dual monitor smart crop
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -132,3 +209,7 @@ export const OPENAI_API_PRICING_URL = 'https://developers.openai.com/api/docs/pr
 
 export const CHATGPT_CODEX_URL = 'https://chatgpt.com/codex'
 export const CHATGPT_PRICING_URL = 'https://chatgpt.com/pricing'
+
+export const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai'
+export const GEMINI_API_KEYS_URL = 'https://aistudio.google.com/apikey'
+export const GEMINI_PRICING_URL = 'https://ai.google.dev/gemini-api/docs/pricing'
