@@ -68,14 +68,18 @@ describe('planSmartCropCapture', () => {
     }
   })
 
-  it('captures full secondary monitor when focus is on primary', () => {
+  it('crops browser when focused on primary in dual setup', () => {
     const plan = planSmartCropCapture(browserOnPrimary, DUAL_ELECTRON)
-    expect(plan).toEqual({ type: 'display-full', display: DUAL_ELECTRON[1] })
+    expect(plan).toEqual({
+      type: 'window-crop',
+      window: browserOnPrimary,
+      display: DUAL_ELECTRON[0]
+    })
   })
 
-  it('captures full secondary monitor when no active window', () => {
+  it('captures full primary when no active window on dual setup', () => {
     const plan = planSmartCropCapture(null, DUAL_ELECTRON)
-    expect(plan).toEqual({ type: 'display-full', display: DUAL_ELECTRON[1] })
+    expect(plan).toEqual({ type: 'display-full', display: DUAL_ELECTRON[0] })
   })
 
   it('single monitor crops focused window', () => {

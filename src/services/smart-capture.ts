@@ -1,27 +1,20 @@
 import {
-  isDualMonitorSetup,
   planSmartCropCapture,
   type DisplayInfo,
   type SmartCropPlan,
   type WindowRect
 } from './display-capture'
 
-export { isDualMonitorSetup } from './display-capture'
+const IGNORED_WINDOW_TITLES = ['specter', 'electron']
 
-const IGNORED_ALWAYS = ['specter', 'electron']
-const IGNORED_ON_DUAL_ONLY = ['cursor', 'google ai studio']
-
-export function shouldIgnoreActiveWindow(title: string, displays?: DisplayInfo[]): boolean {
+/** Only Specter overlay is ignored — same on 1 or 2 monitors. */
+export function shouldIgnoreActiveWindow(title: string): boolean {
   const lower = title.toLowerCase()
-  if (IGNORED_ALWAYS.some((needle) => lower.includes(needle))) return true
-  if (displays && !isDualMonitorSetup(displays)) return false
-  return IGNORED_ON_DUAL_ONLY.some((needle) => lower.includes(needle))
+  return IGNORED_WINDOW_TITLES.some((needle) => lower.includes(needle))
 }
 
 /**
- * Resolve smart-capture plan — auto-detects single vs dual monitor:
- * - Dual: game on external → crop that window; IDE on laptop → full external monitor
- * - Single: crop focused window, or full primary if Specter has focus
+ * Resolve smart-capture plan — identical rules for single and dual monitor.
  */
 export function resolveSmartCapturePlan(
   activeWindow: (WindowRect & { title?: string }) | null,
@@ -29,7 +22,7 @@ export function resolveSmartCapturePlan(
 ): SmartCropPlan | null {
   let windowForPlan: WindowRect | null = activeWindow
 
-  if (activeWindow?.title && shouldIgnoreActiveWindow(activeWindow.title, displays)) {
+  if (activeWindow?.title && shouldIgnoreActiveWindow(activeWindow.title)) {
     windowForPlan = null
   } else if (activeWindow) {
     const { title: _title, ...rect } = activeWindow
@@ -44,7 +37,7 @@ export const SINGLE_MONITOR: DisplayInfo[] = [
   { id: 1, label: 'Built-in Retina', isPrimary: true, bounds: { x: 0, y: 0, width: 3024, height: 1964 } }
 ]
 
-/** User's dual-monitor layout: MacBook primary + VG27A secondary (2560×1440). */
+/** Dual-monitor layout: MacBook primary + VG27A secondary (2560×1440). */
 export const VG27A_DUAL_MONITOR: DisplayInfo[] = [
   { id: 1, label: 'Color LCD', isPrimary: true, bounds: { x: 0, y: 0, width: 1440, height: 900 } },
   { id: 2, label: 'VG27A', isPrimary: false, bounds: { x: 1440, y: 0, width: 2560, height: 1440 } }
@@ -71,5 +64,13 @@ export const CURSOR_ON_SINGLE: WindowRect & { title: string } = {
   y: 0,
   width: 2560,
   height: 1410,
+  title: 'Cursor'
+}
+
+export const CURSOR_ON_DUAL_PRIMARY: WindowRect & { title: string } = {
+  x: 80,
+  y: 40,
+  width: 1280,
+  height: 800,
   title: 'Cursor'
 }

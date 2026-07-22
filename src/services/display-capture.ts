@@ -73,10 +73,6 @@ export type SmartCropPlan =
   | { type: 'window-crop'; window: WindowRect; display: DisplayInfo }
   | { type: 'display-full'; display: DisplayInfo }
 
-export function isDualMonitorSetup(displays: DisplayInfo[]): boolean {
-  return displays.length > 1
-}
-
 /** Find the display whose bounds contain the window center. */
 export function displayForWindow(window: WindowRect, displays: DisplayInfo[]): DisplayInfo | null {
   if (displays.length === 0) return null
@@ -100,9 +96,9 @@ export function displayForWindow(window: WindowRect, displays: DisplayInfo[]): D
 }
 
 /**
- * Smart crop — auto-detects single vs dual monitor:
- * - Dual: focused window on secondary → crop; focus on primary / none → full secondary
- * - Single: crop focused window, or full primary if none
+ * Smart crop — same rules for 1 or 2+ monitors:
+ * - Focused window → crop that window on its display
+ * - No window → full primary display
  */
 export function planSmartCropCapture(
   activeWindow: WindowRect | null,
@@ -111,24 +107,10 @@ export function planSmartCropCapture(
   if (displays.length === 0) return null
 
   const primary = displays.find((d) => d.isPrimary) ?? displays[0]
-  const secondary = displays.find((d) => !d.isPrimary) ?? null
 
   if (activeWindow) {
     const windowDisplay = displayForWindow(activeWindow, displays) ?? primary
-
-    if (secondary && windowDisplay.id !== primary.id) {
-      return { type: 'window-crop', window: activeWindow, display: windowDisplay }
-    }
-
-    if (secondary) {
-      return { type: 'display-full', display: secondary }
-    }
-
     return { type: 'window-crop', window: activeWindow, display: windowDisplay }
-  }
-
-  if (secondary) {
-    return { type: 'display-full', display: secondary }
   }
 
   return { type: 'display-full', display: primary }

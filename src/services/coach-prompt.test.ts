@@ -22,8 +22,8 @@ describe('coach prompt', () => {
     expect(req.userMessage).toContain('[CONTENT]')
   })
 
-  it('game mode redirects IDE-only screen on dual monitor', () => {
-    const req = resolveCoachRequest('Cursor\nGEMINI_API_KEY\n.env', 'game', { displayCount: 2 })
-    expect(req.instantReply?.toLowerCase()).toMatch(/game|gameplay/)
+  it('game mode redirects IDE-only screen', () => {
+    const req = resolveCoachRequest('Cursor\nGEMINI_API_KEY\n.env', 'game')
+    expect(req.instantReply?.toLowerCase()).toMatch(/ide|general|work/)
   })
 })

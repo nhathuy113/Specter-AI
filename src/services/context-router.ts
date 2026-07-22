@@ -51,26 +51,11 @@ function isSpecterSettingsOnly(lower: string): boolean {
   return SPECTER_SETTINGS_SIGNAL.test(lower) && IDE_SIGNAL.test(lower)
 }
 
-function shouldRedirectGameIde(metadata?: ScreenMetadata): boolean {
-  if (metadata?.displayCount !== undefined) {
-    return metadata.displayCount > 1
-  }
-  return true
-}
+const GAME_IDE_REPLY =
+  'This screen shows your IDE or dev tools. Switch assistant mode to General or Work for coding help, or focus your game window first.'
 
-function gameIdeInstantReply(metadata?: ScreenMetadata): string {
-  if (shouldRedirectGameIde(metadata)) {
-    return 'This screen shows your IDE or dev tools, not gameplay. Focus your game on the external monitor, then Analyze Screen again.'
-  }
-  return 'This screen shows your IDE or dev tools. Switch assistant mode to General or Work for coding help, or focus your game window first.'
-}
-
-function gameSettingsInstantReply(metadata?: ScreenMetadata): string {
-  if (shouldRedirectGameIde(metadata)) {
-    return 'This screen shows Specter or API settings, not gameplay. Focus your game on the external monitor, then Analyze Screen again.'
-  }
-  return 'This screen shows Specter or API settings. Switch to General or Work mode for setup help, or focus your game window first.'
-}
+const GAME_SETTINGS_REPLY =
+  'This screen shows Specter or API settings. Switch to General or Work mode for setup help, or focus your game window first.'
 
 export function extractScreenContext(
   rawText: string,
@@ -116,22 +101,21 @@ export function extractScreenContext(
   }
 
   if (isSpecterSettingsOnly(lower)) {
-    const redirectGame = mode === 'game' && shouldRedirectGameIde(metadata)
     return {
       kind: 'ide',
       focusedText: prependMetadata(body.slice(0, 2000), metadata),
-      actionable: mode !== 'game' || !redirectGame,
-      instantReply: redirectGame ? gameSettingsInstantReply(metadata) : undefined
+      actionable: mode !== 'game',
+      instantReply: mode === 'game' ? GAME_SETTINGS_REPLY : undefined
     }
   }
 
   if (isIdeOnly(body, lower, hasGameLog)) {
-    const redirectGame = mode === 'game' && shouldRedirectGameIde(metadata)
+    const actionable = mode !== 'game'
     return {
       kind: 'ide',
       focusedText: prependMetadata(body.slice(0, 4000), metadata),
-      actionable: !redirectGame,
-      instantReply: redirectGame ? gameIdeInstantReply(metadata) : undefined
+      actionable,
+      instantReply: actionable ? undefined : GAME_IDE_REPLY
     }
   }
 

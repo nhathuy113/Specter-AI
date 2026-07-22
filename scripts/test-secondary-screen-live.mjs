@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Live E2E: smart-crop capture + OCR (auto-detects single vs dual monitor).
+ * Live E2E: smart-crop capture + OCR (same rules for 1 or 2 monitors).
  *
  * Usage: pnpm test:screen:live
  */
@@ -54,7 +54,6 @@ function getFrontWindow() {
   }
 }
 
-/** Parse system_profiler for display resolutions (primary first). */
 function probeDisplays() {
   const out = execSync('system_profiler SPDisplaysDataType', { encoding: 'utf-8', timeout: 15000 })
   const resolutions = [...out.matchAll(/Resolution:\s+(\d+)\s+x\s+(\d+)/g)].map((m) => ({
@@ -79,23 +78,14 @@ function probeDisplays() {
   })
 }
 
-const IGNORED_ALWAYS = ['specter', 'electron']
-const IGNORED_ON_DUAL_ONLY = ['cursor', 'google ai studio']
-
-function isDualMonitor(displays) {
-  return displays.length > 1
-}
-
-function shouldIgnoreActiveWindow(title, displays) {
+function shouldIgnoreActiveWindow(title) {
   const lower = title.toLowerCase()
-  if (IGNORED_ALWAYS.some((n) => lower.includes(n))) return true
-  if (!isDualMonitor(displays)) return false
-  return IGNORED_ON_DUAL_ONLY.some((n) => lower.includes(n))
+  return ['specter', 'electron'].some((n) => lower.includes(n))
 }
 
 function resolveSmartCapturePlan(activeWindow, displays) {
   let windowForPlan = activeWindow
-  if (activeWindow?.title && shouldIgnoreActiveWindow(activeWindow.title, displays)) {
+  if (activeWindow?.title && shouldIgnoreActiveWindow(activeWindow.title)) {
     windowForPlan = null
   } else if (activeWindow) {
     const { title: _t, ...rect } = activeWindow
@@ -103,7 +93,6 @@ function resolveSmartCapturePlan(activeWindow, displays) {
   }
 
   const primary = displays.find((d) => d.isPrimary) ?? displays[0]
-  const secondary = displays.find((d) => !d.isPrimary) ?? null
 
   if (windowForPlan) {
     const cx = windowForPlan.x + windowForPlan.width / 2
@@ -117,18 +106,13 @@ function resolveSmartCapturePlan(activeWindow, displays) {
           cy < d.bounds.y + d.bounds.height
       ) ?? primary
 
-    if (secondary && windowDisplay.id !== primary.id) {
-      return { type: 'window-crop', display: windowDisplay, displayIndex: displays.indexOf(windowDisplay) + 1 }
+    return {
+      type: 'window-crop',
+      display: windowDisplay,
+      displayIndex: displays.indexOf(windowDisplay) + 1
     }
-    if (secondary) {
-      return { type: 'display-full', display: secondary, displayIndex: displays.indexOf(secondary) + 1 }
-    }
-    return { type: 'window-crop', display: windowDisplay, displayIndex: displays.indexOf(windowDisplay) + 1 }
   }
 
-  if (secondary) {
-    return { type: 'display-full', display: secondary, displayIndex: displays.indexOf(secondary) + 1 }
-  }
   return { type: 'display-full', display: primary, displayIndex: 1 }
 }
 
@@ -146,10 +130,10 @@ async function ocrPng(buffer) {
   return result.data.text.trim()
 }
 
-console.log('==> Screen capture live E2E (auto-detect monitors)')
+console.log('==> Screen capture live E2E (unified 1/2 monitor rules)')
 
 const displays = probeDisplays()
-const dual = isDualMonitor(displays)
+const dual = displays.length > 1
 console.log(`  layout: ${dual ? 'dual' : 'single'} monitor (${displays.length} display(s))`)
 console.log(`  displays: ${displays.map((d) => `${d.label} ${d.bounds.width}x${d.bounds.height}@x${d.bounds.x}`).join(', ')}`)
 
@@ -157,12 +141,12 @@ const frontWindow = getFrontWindow()
 if (frontWindow) {
   console.log(`  front window: "${frontWindow.title}" @ (${frontWindow.x},${frontWindow.y}) ${frontWindow.width}x${frontWindow.height}`)
 } else {
-  console.log('  front window: (osascript unavailable — using display fallback)')
+  console.log('  front window: (osascript unavailable — using primary fallback)')
 }
 
 const plan = frontWindow
   ? resolveSmartCapturePlan(frontWindow, displays)
-  : { type: 'display-full', display: dual ? displays[1] : displays[0], displayIndex: dual ? 2 : 1 }
+  : { type: 'display-full', display: displays[0], displayIndex: 1 }
 console.log(`  smart-crop plan: ${plan.type} on ${plan.display.label} (screencapture -D ${plan.displayIndex})`)
 
 const pngPath = join(tmpdir(), `specter-screen-e2e-${Date.now()}.png`)
@@ -186,27 +170,20 @@ try {
   const lower = text.toLowerCase()
   const hits = hints.filter((h) => lower.includes(h))
 
-  const isIdeChrome = hits.length >= 2 || (hits.includes('cursor') && hits.includes('.env'))
-  if (isIdeChrome) {
-    console.log('  assistant classify: ide (general mode → coach IDE; game mode → instant redirect)')
+  if (hits.length >= 2) {
+    console.log('  assistant classify: ide')
   } else if (/\bmanpower\b/i.test(text) && /\barmored\b/i.test(text)) {
-    console.log('  assistant classify: game-log → tactical bullets')
+    console.log('  assistant classify: game-log')
   } else {
-    console.log('  assistant classify: general/unknown screen')
+    console.log('  assistant classify: general')
   }
 
-  if (hits.length === 0) {
-    console.warn('  WARN: no IDE keyword hits in OCR (may still be valid UI text)')
-  } else {
+  if (hits.length > 0) {
     console.log(`  OCR keyword hits: ${hits.join(', ')}`)
   }
 
-  if (dual && plan.type !== 'display-full' && plan.displayIndex !== 2 && shouldIgnoreActiveWindow(frontWindow?.title ?? '', displays)) {
-    console.warn(`  WARN: dual-monitor + IDE focus usually yields display-full on monitor 2, got ${plan.type} @ ${plan.displayIndex}`)
-  }
-
-  if (!dual && plan.type !== 'window-crop' && frontWindow && !shouldIgnoreActiveWindow(frontWindow.title, displays)) {
-    console.warn(`  WARN: single-monitor usually window-crops focused app, got ${plan.type}`)
+  if (frontWindow && !shouldIgnoreActiveWindow(frontWindow.title) && plan.type !== 'window-crop') {
+    console.warn(`  WARN: expected window-crop for focused app, got ${plan.type}`)
   }
 
   console.log(`PASS: ${dual ? 'dual' : 'single'}-monitor capture + OCR works`)

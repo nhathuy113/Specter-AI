@@ -51,14 +51,16 @@ describe('extractScreenContext', () => {
     expect(ctx.instantReply).toBeUndefined()
   })
 
-  it('redirects IDE in game mode on dual monitor', () => {
-    const ctx = extractScreenContext(IDE_OCR, 'game', { displayCount: 2 })
+  it('redirects IDE in game mode (same on 1 or 2 monitors)', () => {
+    const ctx = extractScreenContext(IDE_OCR, 'game', { displayCount: 1 })
     expect(ctx.kind).toBe('ide')
-    expect(ctx.instantReply?.toLowerCase()).toContain('game')
+    expect(ctx.instantReply?.toLowerCase()).toContain('ide')
+    const ctxDual = extractScreenContext(IDE_OCR, 'game', { displayCount: 2 })
+    expect(ctxDual.instantReply).toBe(ctx.instantReply)
   })
 
-  it('allows IDE in game mode on single monitor like other modes', () => {
-    const ctx = extractScreenContext(IDE_OCR, 'game', { displayCount: 1 })
+  it('allows IDE in general mode on any monitor', () => {
+    const ctx = extractScreenContext(IDE_OCR, 'general', { displayCount: 2 })
     expect(ctx.kind).toBe('ide')
     expect(ctx.actionable).toBe(true)
     expect(ctx.instantReply).toBeUndefined()
@@ -79,8 +81,8 @@ describe('resolveAssistantRequest', () => {
     expect(req.userMessage).toContain('Brussels')
   })
 
-  it('instant reply for game mode on IDE (dual monitor)', () => {
-    const req = resolveAssistantRequest(IDE_OCR, 'game', { displayCount: 2 })
+  it('instant reply for game mode on IDE', () => {
+    const req = resolveAssistantRequest(IDE_OCR, 'game')
     expect(req.instantReply).toBeTruthy()
   })
 

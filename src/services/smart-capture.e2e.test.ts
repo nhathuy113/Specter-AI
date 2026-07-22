@@ -6,6 +6,7 @@ import { CoachTriggerEvaluator } from './coach-state'
 import { fingerprintScreenText } from './fingerprint'
 import {
   BROWSER_ON_PRIMARY,
+  CURSOR_ON_DUAL_PRIMARY,
   CURSOR_ON_SINGLE,
   HOI4_WINDOW_ON_SECONDARY,
   resolveSmartCapturePlan,
@@ -36,7 +37,7 @@ Manpower: 17.36K
 Armored: 44
 `.trim()
 
-describe('smart capture e2e scenarios (VG27A dual monitor)', () => {
+describe('smart capture (unified 1/2 monitor)', () => {
   it('crops HOI4 when game window is focused on secondary monitor', () => {
     const plan = resolveSmartCapturePlan(HOI4_WINDOW_ON_SECONDARY, VG27A_DUAL_MONITOR)
     expect(plan).toEqual({
@@ -46,68 +47,53 @@ describe('smart capture e2e scenarios (VG27A dual monitor)', () => {
     })
   })
 
-  it('captures full VG27A when browser is focused on primary laptop screen', () => {
+  it('crops browser when focused on primary laptop screen (dual)', () => {
     const plan = resolveSmartCapturePlan(BROWSER_ON_PRIMARY, VG27A_DUAL_MONITOR)
-    expect(plan).toEqual({ type: 'display-full', display: VG27A_DUAL_MONITOR[1] })
+    expect(plan?.type).toBe('window-crop')
+    if (plan?.type === 'window-crop') {
+      expect(plan.display.label).toBe('Color LCD')
+    }
   })
 
-  it('captures full VG27A when Specter overlay has focus', () => {
-    const plan = resolveSmartCapturePlan(
+  it('captures full primary when Specter overlay has focus', () => {
+    const dual = resolveSmartCapturePlan(
       { x: 200, y: 200, width: 420, height: 600, title: 'Specter AI' },
       VG27A_DUAL_MONITOR
     )
-    expect(plan).toEqual({ type: 'display-full', display: VG27A_DUAL_MONITOR[1] })
-  })
+    expect(dual).toEqual({ type: 'display-full', display: VG27A_DUAL_MONITOR[0] })
 
-  it('captures full VG27A when Google AI Studio settings has focus', () => {
-    const plan = resolveSmartCapturePlan(
-      { x: 100, y: 80, width: 1200, height: 900, title: 'Google AI Studio' },
-      VG27A_DUAL_MONITOR
+    const single = resolveSmartCapturePlan(
+      { x: 200, y: 200, width: 420, height: 600, title: 'Specter AI' },
+      SINGLE_MONITOR
     )
-    expect(plan).toEqual({ type: 'display-full', display: VG27A_DUAL_MONITOR[1] })
+    expect(single).toEqual({ type: 'display-full', display: SINGLE_MONITOR[0] })
   })
 
-  it('captures full VG27A when no active window is detected', () => {
-    const plan = resolveSmartCapturePlan(null, VG27A_DUAL_MONITOR)
-    expect(plan).toEqual({ type: 'display-full', display: VG27A_DUAL_MONITOR[1] })
-  })
-})
-
-describe('shouldIgnoreActiveWindow', () => {
-  it('ignores Specter and dev tooling titles on dual monitor', () => {
-    expect(shouldIgnoreActiveWindow('Specter AI', VG27A_DUAL_MONITOR)).toBe(true)
-    expect(shouldIgnoreActiveWindow('Google AI Studio', VG27A_DUAL_MONITOR)).toBe(true)
-    expect(shouldIgnoreActiveWindow('Cursor', VG27A_DUAL_MONITOR)).toBe(true)
-    expect(shouldIgnoreActiveWindow('Hearts of Iron IV', VG27A_DUAL_MONITOR)).toBe(false)
-  })
-
-  it('does not ignore Cursor on single monitor', () => {
-    expect(shouldIgnoreActiveWindow('Cursor', SINGLE_MONITOR)).toBe(false)
-    expect(shouldIgnoreActiveWindow('Specter AI', SINGLE_MONITOR)).toBe(true)
-  })
-})
-
-describe('single monitor smart capture', () => {
-  it('crops Cursor window when focused on one display', () => {
-    const plan = resolveSmartCapturePlan(CURSOR_ON_SINGLE, SINGLE_MONITOR)
-    expect(plan).toEqual({
-      type: 'window-crop',
-      window: { x: 0, y: 0, width: 2560, height: 1410 },
+  it('captures full primary when no active window', () => {
+    expect(resolveSmartCapturePlan(null, VG27A_DUAL_MONITOR)).toEqual({
+      type: 'display-full',
+      display: VG27A_DUAL_MONITOR[0]
+    })
+    expect(resolveSmartCapturePlan(null, SINGLE_MONITOR)).toEqual({
+      type: 'display-full',
       display: SINGLE_MONITOR[0]
     })
   })
 
-  it('captures full primary when Specter overlay has focus', () => {
-    const plan = resolveSmartCapturePlan(
-      { x: 200, y: 200, width: 420, height: 600, title: 'Specter AI' },
-      SINGLE_MONITOR
-    )
-    expect(plan).toEqual({ type: 'display-full', display: SINGLE_MONITOR[0] })
+  it('crops Cursor the same way on single and dual primary', () => {
+    const single = resolveSmartCapturePlan(CURSOR_ON_SINGLE, SINGLE_MONITOR)
+    const dual = resolveSmartCapturePlan(CURSOR_ON_DUAL_PRIMARY, VG27A_DUAL_MONITOR)
+    expect(single?.type).toBe('window-crop')
+    expect(dual?.type).toBe('window-crop')
   })
+})
 
-  it('captures full primary when no active window', () => {
-    const plan = resolveSmartCapturePlan(null, SINGLE_MONITOR)
-    expect(plan).toEqual({ type: 'display-full', display: SINGLE_MONITOR[0] })
+describe('shouldIgnoreActiveWindow', () => {
+  it('ignores only Specter overlay on any layout', () => {
+    expect(shouldIgnoreActiveWindow('Specter AI')).toBe(true)
+    expect(shouldIgnoreActiveWindow('Cursor')).toBe(false)
+    expect(shouldIgnoreActiveWindow('Google AI Studio')).toBe(false)
+    expect(shouldIgnoreActiveWindow('Hearts of Iron IV')).toBe(false)
   })
 })
 
@@ -120,7 +106,7 @@ describe('coach pipeline e2e (capture → fingerprint → coach message)', () =>
   })
 
   it('game mode instant redirect when OCR is IDE chrome', () => {
-    const req = resolveCoachRequest('Cursor Specter GEMINI_API_KEY .env', 'game', { displayCount: 2 })
+    const req = resolveCoachRequest('Cursor Specter GEMINI_API_KEY .env', 'game')
     expect(req.kind).toBe('ide')
     expect(req.instantReply).toBeTruthy()
   })

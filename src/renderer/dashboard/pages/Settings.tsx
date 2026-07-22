@@ -816,7 +816,7 @@ export default function Settings() {
             <div>
               <label className="text-sm text-white/50">Smart Crop</label>
               <p className="text-xs text-white/20 mt-0.5">
-                Auto-detects monitors: single screen crops the focused window; dual setup captures the external display when IDE is focused on laptop.
+                Auto-detects monitors: always crops the focused window; falls back to full primary display when Specter has focus.
               </p>
             </div>
             <button
