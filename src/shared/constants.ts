@@ -71,8 +71,13 @@ export const DEFAULT_HOTKEYS = {
   askAI: 'CommandOrControl+Return',
   toggleOverlay: 'CommandOrControl+\\',
   toggleAudio: 'CommandOrControl+Shift+Space',
-  screenshotAsk: 'CommandOrControl+Shift+Return'
+  screenshotAsk: 'CommandOrControl+Shift+Return',
+  /** Double-tap ⌘/ within ~450ms (like typing //) → ask about active tab */
+  activeTabAsk: 'Command+/'
 }
+
+export const DEFAULT_ACTIVE_TAB_PROMPT =
+  'What am I doing in the active tab/window right now? Recommend the single best next step.'
 
 export const DEFAULT_MODELS = [
   {
@@ -195,7 +200,10 @@ export const DEFAULT_SETTINGS = {
   whisperApiUrl: '',        // only used when provider is 'custom'
   whisperModel: '',         // only used when provider is 'custom'
   autoHideDelay: 0,          // seconds, 0 = disabled
-  smartCrop: true            // auto-detect single/dual monitor smart crop
+  smartCrop: true,            // auto-detect single/dual monitor smart crop
+  fullAutoMode: false,        // watch + journal, no hotkey needed
+  activityJournal: false,     // log focus every minute for performance review
+  journalIntervalSec: 60
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'

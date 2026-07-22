@@ -24,6 +24,22 @@ export function resolveCoachRequest(
   return resolveAssistantRequest(screenText, mode, metadata)
 }
 
+export function buildActiveTabUserMessage(
+  screenText: string,
+  mode: AssistantMode = 'work',
+  metadata?: ScreenMetadata
+): string {
+  const req = resolveCoachRequest(screenText, mode, metadata)
+  if (req.instantReply) return req.instantReply
+  return [
+    req.userMessage,
+    '',
+    '[TASK — ACTIVE TAB]',
+    'Summarize what the user is doing in the active tab/window in one line.',
+    'Then recommend the single best next step. Be specific to visible UI text.'
+  ].join('\n')
+}
+
 /** @deprecated Use resolveCoachRequest for coach flows. */
 export function buildCoachUserMessage(
   screenText: string,

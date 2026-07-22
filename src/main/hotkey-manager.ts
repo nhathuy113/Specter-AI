@@ -6,22 +6,27 @@ import { DEFAULT_HOTKEYS } from '../shared/constants'
 import { showOverlay, toggleOverlay } from './overlay-window'
 
 let overlayRef: BrowserWindow | null = null
+let lastActiveTabPressMs = 0
+const ACTIVE_TAB_DOUBLE_TAP_MS = 450
 
 export function registerHotkeys(overlayWindow: BrowserWindow): void {
   overlayRef = overlayWindow
   applyHotkeys()
 }
 
+function mergedHotkeys() {
+  const stored = getSetting<typeof DEFAULT_HOTKEYS>('hotkeys') || {}
+  return { ...DEFAULT_HOTKEYS, ...stored }
+}
+
 function applyHotkeys(): void {
   if (!overlayRef || overlayRef.isDestroyed()) return
 
-  // Unregister all first to avoid conflicts
   globalShortcut.unregisterAll()
 
-  const hotkeys = getSetting<typeof DEFAULT_HOTKEYS>('hotkeys') || DEFAULT_HOTKEYS
+  const hotkeys = mergedHotkeys()
   const win = overlayRef
 
-  // Ctrl/Cmd + Enter: Ask AI based on current context
   try {
     globalShortcut.register(hotkeys.askAI, () => {
       if (win && !win.isDestroyed()) {
@@ -33,7 +38,6 @@ function applyHotkeys(): void {
     console.warn('[Specter] Failed to register askAI hotkey:', e)
   }
 
-  // Ctrl/Cmd + Shift + Enter: Ask AI with screenshot
   try {
     globalShortcut.register(hotkeys.screenshotAsk, () => {
       if (win && !win.isDestroyed()) {
@@ -45,7 +49,6 @@ function applyHotkeys(): void {
     console.warn('[Specter] Failed to register screenshotAsk hotkey:', e)
   }
 
-  // Ctrl/Cmd + \: Toggle overlay visibility
   try {
     globalShortcut.register(hotkeys.toggleOverlay, () => {
       if (win && !win.isDestroyed()) {
@@ -56,7 +59,6 @@ function applyHotkeys(): void {
     console.warn('[Specter] Failed to register toggleOverlay hotkey:', e)
   }
 
-  // Ctrl/Cmd + Shift + Space: Toggle audio recording
   try {
     globalShortcut.register(hotkeys.toggleAudio, () => {
       if (win && !win.isDestroyed()) {
@@ -65,6 +67,23 @@ function applyHotkeys(): void {
     })
   } catch (e) {
     console.warn('[Specter] Failed to register toggleAudio hotkey:', e)
+  }
+
+  // Double-tap ⌘/ within 450ms ≈ typing // → prompt active tab
+  try {
+    globalShortcut.register(hotkeys.activeTabAsk, () => {
+      if (!win || win.isDestroyed()) return
+      const now = Date.now()
+      if (now - lastActiveTabPressMs <= ACTIVE_TAB_DOUBLE_TAP_MS) {
+        lastActiveTabPressMs = 0
+        showOverlay()
+        win.webContents.send(IPC_CHANNELS.HOTKEY_ACTIVE_TAB)
+      } else {
+        lastActiveTabPressMs = now
+      }
+    })
+  } catch (e) {
+    console.warn('[Specter] Failed to register activeTabAsk hotkey:', e)
   }
 }
 

@@ -78,9 +78,12 @@ Trigger (Ask | Analyze | Watch)
 
 ---
 
-## v1 complete
+## Phase E — Performance Review mode ✅
 
-General virtual screen assistant: overlay advise-only, hybrid perception, mode-aware routing, playbooks, live test suite.
+- [x] **Double-tap ⌘/** (`activeTabAsk`) → prompt Gemini about active tab/window
+- [x] **Full Auto Mode** — Watch + activity journal, no hotkey
+- [x] **Activity journal** — log app/window/kind every minute; Dashboard → Activity; export Markdown
+- [x] Journal context injected into AI prompts when enabled
 
 ---
 

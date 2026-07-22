@@ -3,7 +3,7 @@
 import Store from 'electron-store'
 import { safeStorage } from 'electron'
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_COACH_SYSTEM_PROMPT, ASSISTANT_MODES, PERCEPTION_MODES } from '../shared/constants'
-import type { UserSettings, Conversation } from '../shared/types'
+import type { UserSettings, Conversation, ActivityJournalEntry } from '../shared/types'
 
 // --- Sensitive key handling via safeStorage ---
 // These keys are stored as base64-encoded safeStorage-encrypted blobs,
@@ -72,7 +72,23 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   continuousCoach: (v) => typeof v === 'boolean',
   detectIntervalSec: (v) => typeof v === 'number' && v >= 3 && v <= 300,
   coachCooldownSec: (v) => typeof v === 'number' && v >= 5 && v <= 300,
-  assistantMode: (v) => typeof v === 'string' && (ASSISTANT_MODES as readonly string[]).includes(v),
+  fullAutoMode: (v) => typeof v === 'boolean',
+  activityJournal: (v) => typeof v === 'boolean',
+  journalIntervalSec: (v) => typeof v === 'number' && v >= 30 && v <= 300,
+  activityJournalLog: (v) => {
+    if (!Array.isArray(v)) return false
+    return v.every((item) => {
+      if (typeof item !== 'object' || item === null) return false
+      const e = item as Record<string, unknown>
+      return (
+        typeof e.id === 'string' &&
+        typeof e.minuteKey === 'string' &&
+        typeof e.timestamp === 'number' &&
+        typeof e.appName === 'string' &&
+        typeof e.durationSec === 'number'
+      )
+    })
+  },
   perceptionMode: (v) => typeof v === 'string' && (PERCEPTION_MODES as readonly string[]).includes(v),
   coachSystemPrompt: (v) => typeof v === 'string' && v.length <= 10000,
   maxTranscriptLength: (v) => typeof v === 'number' && v >= 100 && v <= 100000,
@@ -96,6 +112,7 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
       return true
     })
   },
+  assistantMode: (v) => typeof v === 'string' && (ASSISTANT_MODES as readonly string[]).includes(v),
   whisperProvider: (v) => typeof v === 'string' && ['groq', 'openai', 'custom'].includes(v),
   whisperApiUrl: (v) => typeof v === 'string' && v.length <= 500,
   whisperModel: (v) => typeof v === 'string' && v.length <= 200,
@@ -150,6 +167,12 @@ function migrateSettings(s: Store<Record<string, unknown>>): void {
     s.set('systemPrompt', DEFAULT_SYSTEM_PROMPT)
     console.info('[Specter] Migrated system prompt to new default')
   }
+
+  const hotkeys = s.get('hotkeys') as Record<string, string> | undefined
+  if (hotkeys && !hotkeys.activeTabAsk) {
+    s.set('hotkeys', { ...DEFAULT_SETTINGS.hotkeys, ...hotkeys })
+    console.info('[Specter] Migrated hotkeys — added activeTabAsk (double ⌘/)')
+  }
 }
 
 // --- electron-store setup ---
@@ -203,7 +226,11 @@ const schema = {
   whisperApiUrl: { type: 'string' as const, default: DEFAULT_SETTINGS.whisperApiUrl },
   whisperModel: { type: 'string' as const, default: DEFAULT_SETTINGS.whisperModel },
   autoHideDelay: { type: 'number' as const, default: DEFAULT_SETTINGS.autoHideDelay },
-  smartCrop: { type: 'boolean' as const, default: DEFAULT_SETTINGS.smartCrop }
+  smartCrop: { type: 'boolean' as const, default: DEFAULT_SETTINGS.smartCrop },
+  fullAutoMode: { type: 'boolean' as const, default: DEFAULT_SETTINGS.fullAutoMode },
+  activityJournal: { type: 'boolean' as const, default: DEFAULT_SETTINGS.activityJournal },
+  journalIntervalSec: { type: 'number' as const, default: DEFAULT_SETTINGS.journalIntervalSec },
+  activityJournalLog: { type: 'array' as const, default: [] }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -303,6 +330,9 @@ export function getAllSettings(): UserSettings {
     continuousCoach: s.get('continuousCoach') as boolean,
     detectIntervalSec: s.get('detectIntervalSec') as number,
     coachCooldownSec: s.get('coachCooldownSec') as number,
+    fullAutoMode: s.get('fullAutoMode') as boolean,
+    activityJournal: s.get('activityJournal') as boolean,
+    journalIntervalSec: s.get('journalIntervalSec') as number,
     assistantMode: s.get('assistantMode') as UserSettings['assistantMode'],
     perceptionMode: s.get('perceptionMode') as UserSettings['perceptionMode'],
     coachSystemPrompt: s.get('coachSystemPrompt') as string,

@@ -42,6 +42,7 @@ export const IPC_CHANNELS = {
   HOTKEY_ASK_WITH_SCREENSHOT: 'hotkey:ask-with-screenshot',
   HOTKEY_TOGGLE_AUDIO: 'hotkey:toggle-audio',
   HOTKEY_TOGGLE_OVERLAY: 'hotkey:toggle-overlay',
+  HOTKEY_ACTIVE_TAB: 'hotkey:active-tab',
   HOTKEY_REREGISTER: 'hotkey:reregister',
 
   // Dashboard
@@ -59,6 +60,11 @@ export const IPC_CHANNELS = {
   // Continuous coach
   COACH_TRIGGER: 'coach:trigger',
   COACH_STREAMING: 'coach:streaming',
+
+  // Activity journal (performance review)
+  ACTIVITY_JOURNAL_LIST: 'activity-journal:list',
+  ACTIVITY_JOURNAL_EXPORT: 'activity-journal:export',
+  ACTIVITY_JOURNAL_CLEAR: 'activity-journal:clear',
 
   // Conversations
   CONVERSATIONS_LIST: 'conversations:list',

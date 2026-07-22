@@ -8,8 +8,10 @@ import { streamGeminiCompletion, streamGeminiVisionCompletion, cancelGeminiStrea
 import { buildVisionUserTask } from '../services/perception'
 import { streamCodexCompletion, cancelCodexStream } from '../services/codex'
 import { buildSystemPrompt, buildUserMessage, estimateTokens } from '../services/context-builder'
-import { buildCoachSystemPrompt, resolveCoachRequest } from '../services/coach-prompt'
+import { buildCoachSystemPrompt, resolveCoachRequest, buildActiveTabUserMessage } from '../services/coach-prompt'
 import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
+import { getRecentJournalContext, getJournalEntries, exportJournalMarkdown, clearJournal } from '../services/activity-journal'
+import { syncActivityJournal, stopActivityJournal } from './activity-journal-loop'
 import { checkAiConfig } from '../services/ai-config'
 import { captureScreenText, captureScreenOnly } from './screen-capture'
 import { syncContinuousCoach, stopContinuousCoach, setOverlayCoachStreaming } from './continuous-coach-loop'
@@ -171,6 +173,7 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     useVisionOverride?: boolean
     screenMetadata?: ScreenMetadata
     coachMode?: boolean
+    activeTabMode?: boolean
   }) => {
     // Rate limit
     if (!checkRateLimit(IPC_CHANNELS.AI_QUERY)) {
@@ -254,6 +257,11 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     let coachInstantReply: string | undefined
     const userMessage = args.coachMode
       ? (() => {
+          if (args.activeTabMode) {
+            const coachReq = resolveCoachRequest(screenText, assistantMode, screenMetadata)
+            coachInstantReply = coachReq.instantReply
+            return coachInstantReply ?? buildActiveTabUserMessage(screenText, assistantMode, screenMetadata)
+          }
           const coachReq = resolveCoachRequest(screenText, assistantMode, screenMetadata)
           coachInstantReply = coachReq.instantReply
           return coachReq.userMessage
@@ -264,9 +272,11 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
           userQuery: args.query
         })
 
-    const fullUserMessage = playbookContext
-      ? `${playbookContext}\n\n${userMessage}`
-      : userMessage
+    const journalEnabled = getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
+    const journalContext = journalEnabled ? getRecentJournalContext(30) : ''
+
+    const contextParts = [playbookContext, journalContext, userMessage].filter(Boolean)
+    const fullUserMessage = contextParts.join('\n\n')
 
     // Build messages array: system prompt + conversation history + new user message
     const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
@@ -468,12 +478,20 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     }
     if (
       key === 'continuousCoach' ||
+      key === 'fullAutoMode' ||
       key === 'assistantMode' ||
       key === 'perceptionMode' ||
       key === 'detectIntervalSec' ||
       key === 'coachCooldownSec'
     ) {
+      if (key === 'fullAutoMode' && value === true) {
+        setSetting('continuousCoach', true)
+        setSetting('activityJournal', true)
+      }
       syncContinuousCoach(overlayWindow)
+    }
+    if (key === 'activityJournal' || key === 'journalIntervalSec' || key === 'fullAutoMode') {
+      syncActivityJournal()
     }
     // Re-register hotkeys when hotkey settings change
     if (key === 'hotkeys') {
@@ -535,7 +553,20 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   ipcMain.on(IPC_CHANNELS.APP_QUIT, () => {
     stopAutoCapture()
     stopContinuousCoach()
+    stopActivityJournal()
     app.quit()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.ACTIVITY_JOURNAL_LIST, () => {
+    return getJournalEntries()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.ACTIVITY_JOURNAL_EXPORT, () => {
+    return exportJournalMarkdown()
+  })
+
+  ipcMain.on(IPC_CHANNELS.ACTIVITY_JOURNAL_CLEAR, () => {
+    clearJournal()
   })
 
   // Shell — open URLs in external browser (validated in preload)
@@ -554,4 +585,5 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   // Initialize auto-capture if enabled
   syncAutoCapture()
   syncContinuousCoach(overlayWindow)
+  syncActivityJournal()
 }

@@ -21,6 +21,9 @@ interface SettingsState {
   continuousCoach: boolean
   detectIntervalSec: number
   coachCooldownSec: number
+  fullAutoMode: boolean
+  activityJournal: boolean
+  journalIntervalSec: number
   assistantMode: AssistantMode
   perceptionMode: PerceptionMode
   coachSystemPrompt: string
@@ -33,6 +36,7 @@ interface SettingsState {
     toggleOverlay: string
     toggleAudio: string
     screenshotAsk: string
+    activeTabAsk: string
   }
   // Whisper / audio transcription
   whisperProvider: 'groq' | 'openai' | 'custom'
@@ -57,6 +61,9 @@ const DEFAULT_STATE: SettingsState = {
   continuousCoach: false,
   detectIntervalSec: 3,
   coachCooldownSec: 10,
+  fullAutoMode: false,
+  activityJournal: false,
+  journalIntervalSec: 60,
   assistantMode: 'general',
   perceptionMode: 'auto',
   coachSystemPrompt: '',
@@ -68,7 +75,8 @@ const DEFAULT_STATE: SettingsState = {
     askAI: 'CommandOrControl+Return',
     toggleOverlay: 'CommandOrControl+\\',
     toggleAudio: 'CommandOrControl+Shift+Space',
-    screenshotAsk: 'CommandOrControl+Shift+Return'
+    screenshotAsk: 'CommandOrControl+Shift+Return',
+    activeTabAsk: 'Command+/'
   },
   whisperProvider: 'groq',
   whisperApiKey: '',
@@ -119,6 +127,9 @@ export default function Settings() {
         continuousCoach: all.continuousCoach || false,
         detectIntervalSec: all.detectIntervalSec || 3,
         coachCooldownSec: all.coachCooldownSec || 10,
+        fullAutoMode: all.fullAutoMode || false,
+        activityJournal: all.activityJournal || false,
+        journalIntervalSec: all.journalIntervalSec || 60,
         assistantMode: all.assistantMode || 'general',
         perceptionMode: all.perceptionMode || 'auto',
         coachSystemPrompt: all.coachSystemPrompt || '',
@@ -157,6 +168,9 @@ export default function Settings() {
       await api.setSetting('continuousCoach', settings.continuousCoach)
       await api.setSetting('detectIntervalSec', settings.detectIntervalSec)
       await api.setSetting('coachCooldownSec', settings.coachCooldownSec)
+      await api.setSetting('fullAutoMode', settings.fullAutoMode)
+      await api.setSetting('activityJournal', settings.activityJournal)
+      await api.setSetting('journalIntervalSec', settings.journalIntervalSec)
       await api.setSetting('assistantMode', settings.assistantMode)
       await api.setSetting('perceptionMode', settings.perceptionMode)
       await api.setSetting('coachSystemPrompt', settings.coachSystemPrompt)
@@ -852,6 +866,71 @@ export default function Settings() {
 
           <div className="flex items-center justify-between">
             <div>
+              <label className="text-sm text-white/50">Full Auto Mode</label>
+              <p className="text-xs text-white/20 mt-0.5">
+                Watch + activity journal — no hotkey needed. Specter coaches and logs focus every minute.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSettings((prev) => ({
+                  ...prev,
+                  fullAutoMode: !prev.fullAutoMode,
+                  ...( !prev.fullAutoMode
+                    ? { continuousCoach: true, activityJournal: true }
+                    : {})
+                }))
+              }}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                settings.fullAutoMode ? 'bg-violet-500' : 'bg-white/10'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  settings.fullAutoMode ? 'translate-x-[22px]' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm text-white/50">Activity journal</label>
+              <p className="text-xs text-white/20 mt-0.5">
+                Log app, window, and screen kind every minute for performance review (Dashboard → Activity).
+              </p>
+            </div>
+            <button
+              onClick={() => updateSetting('activityJournal', !settings.activityJournal)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                settings.activityJournal ? 'bg-violet-500' : 'bg-white/10'
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  settings.activityJournal ? 'translate-x-[22px]' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
+          {(settings.activityJournal || settings.fullAutoMode) && (
+            <div>
+              <label className="text-sm text-white/50 block mb-2">Journal interval (seconds)</label>
+              <input
+                type="number"
+                min="30"
+                max="300"
+                value={settings.journalIntervalSec}
+                onChange={(e) => updateSetting('journalIntervalSec', parseInt(e.target.value) || 60)}
+                className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                           text-white/90 focus:border-violet-500/40 focus:outline-none w-32"
+              />
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div>
               <label className="text-sm text-white/50">Continuous coach (Watch)</label>
               <p className="text-xs text-white/20 mt-0.5">Auto-detect screen changes and recommend next steps (default off)</p>
             </div>
@@ -985,7 +1064,8 @@ export default function Settings() {
             { key: 'askAI' as const, label: 'Ask AI', desc: 'Trigger AI with current context' },
             { key: 'toggleOverlay' as const, label: 'Toggle Overlay', desc: 'Show/hide the overlay' },
             { key: 'toggleAudio' as const, label: 'Toggle Audio', desc: 'Start/stop recording' },
-            { key: 'screenshotAsk' as const, label: 'Screenshot + Ask', desc: 'Capture screen and ask AI' }
+            { key: 'screenshotAsk' as const, label: 'Screenshot + Ask', desc: 'Capture screen and ask AI' },
+            { key: 'activeTabAsk' as const, label: 'Active tab (double ⌘/)', desc: 'Double-tap ⌘/ like // → ask about active tab' }
           ]).map((item) => (
             <div key={item.key} className="flex items-center justify-between py-2">
               <div>

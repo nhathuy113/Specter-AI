@@ -503,10 +503,6 @@ export default function App() {
     )
   }, [getMessageHistory, ensureAiConfigured])
 
-  /**
-   * One-click "Analyze Screen" — captures screen + sends to AI automatically.
-   * No text input needed. Just click and get AI analysis of what's on screen.
-   */
   const analyzeScreen = useCallback(async () => {
     if (isStreamingRef.current) return
     if (isCapturing) return
@@ -536,6 +532,42 @@ export default function App() {
       isRecordingRef.current,
       history,
       { coachMode: true }
+    )
+
+    setIsCapturing(false)
+    setAttachedScreenshot(null)
+  }, [isCapturing, getMessageHistory, ensureAiConfigured])
+
+  /** Double-tap ⌘/ — prompt Gemini about the active tab/window. */
+  const analyzeActiveTab = useCallback(async () => {
+    if (isStreamingRef.current) return
+    if (isCapturing) return
+    if (!(await ensureAiConfigured())) return
+
+    setIsCapturing(true)
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: '[Active tab] What am I doing? Best next step?',
+      timestamp: Date.now()
+    }
+
+    const history = getMessageHistory()
+
+    setMessages((prev) => [...prev, userMessage])
+    setQuery('')
+    setError(null)
+    setIsStreaming(true)
+    setStreamingContent('')
+    pendingCostRef.current = null
+
+    window.specterAPI?.queryAI(
+      'What am I doing in the active tab/window right now? Recommend the single best next step.',
+      true,
+      isRecordingRef.current,
+      history,
+      { coachMode: true, activeTabMode: true }
     )
 
     setIsCapturing(false)
@@ -779,6 +811,10 @@ export default function App() {
       doSubmit(true)
     })
 
+    const unsubHotkeyActiveTab = api.onHotkeyActiveTab(() => {
+      analyzeActiveTab()
+    })
+
     const unsubHotkeyAudio = api.onHotkeyToggleAudio(() => {
       toggleRecording()
     })
@@ -797,11 +833,12 @@ export default function App() {
       unsubError()
       unsubHotkeyAsk()
       unsubHotkeyScreenshot()
+      unsubHotkeyActiveTab()
       unsubHotkeyAudio()
       unsubAutoCapture()
       unsubCoachTrigger()
     }
-  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming])
+  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming, analyzeActiveTab])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

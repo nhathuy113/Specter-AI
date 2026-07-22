@@ -15,6 +15,7 @@ export interface QueryAIOptions {
   useVisionOverride?: boolean
   screenMetadata?: { appName?: string; windowTitle?: string; textSource?: string }
   coachMode?: boolean
+  activeTabMode?: boolean
 }
 
 export interface SpecterAPI {
@@ -56,6 +57,12 @@ export interface SpecterAPI {
   onHotkeyScreenshot: (callback: () => void) => () => void
   onHotkeyToggleAudio: (callback: () => void) => () => void
   onHotkeyToggleOverlay: (callback: () => void) => () => void
+  onHotkeyActiveTab: (callback: () => void) => () => void
+
+  // Activity journal
+  listActivityJournal: () => Promise<Array<{ id: string; minuteKey: string; timestamp: number; appName: string; windowTitle: string; screenKind: string; snippet: string; fingerprint: string; durationSec: number }>>
+  exportActivityJournal: () => Promise<string>
+  clearActivityJournal: () => void
 
   // Auto-capture
   onAutoCaptureUpdate: (callback: (data: { text: string; timestamp: number }) => void) => () => void
@@ -135,7 +142,8 @@ const api: SpecterAPI = {
       screenshotOverride: options?.screenshotOverride,
       useVisionOverride: options?.useVisionOverride,
       screenMetadata: options?.screenMetadata,
-      coachMode: !!options?.coachMode
+      coachMode: !!options?.coachMode,
+      activeTabMode: !!options?.activeTabMode
     })
   },
   cancelAI: () => {
@@ -225,6 +233,15 @@ const api: SpecterAPI = {
     ipcRenderer.on(IPC_CHANNELS.HOTKEY_TOGGLE_OVERLAY, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.HOTKEY_TOGGLE_OVERLAY, handler)
   },
+  onHotkeyActiveTab: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC_CHANNELS.HOTKEY_ACTIVE_TAB, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.HOTKEY_ACTIVE_TAB, handler)
+  },
+
+  listActivityJournal: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_JOURNAL_LIST),
+  exportActivityJournal: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_JOURNAL_EXPORT),
+  clearActivityJournal: () => ipcRenderer.send(IPC_CHANNELS.ACTIVITY_JOURNAL_CLEAR),
 
   // Dashboard
   openDashboard: () => ipcRenderer.send(IPC_CHANNELS.OPEN_DASHBOARD),

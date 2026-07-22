@@ -1,0 +1,128 @@
+import type { ScreenKind } from './context-router'
+import { getSetting, setSetting } from './store'
+
+export interface ActivityJournalEntry {
+  id: string
+  minuteKey: string
+  timestamp: number
+  appName: string
+  windowTitle: string
+  screenKind: ScreenKind
+  snippet: string
+  fingerprint: string
+  durationSec: number
+}
+
+export const MAX_JOURNAL_ENTRIES = 10_080 // ~7 days at 1/min
+
+export function minuteKeyFromDate(date = new Date()): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  const h = String(date.getHours()).padStart(2, '0')
+  const min = String(date.getMinutes()).padStart(2, '0')
+  return `${y}-${m}-${d}T${h}:${min}`
+}
+
+export function getJournalEntries(): ActivityJournalEntry[] {
+  return getSetting<ActivityJournalEntry[]>('activityJournalLog') || []
+}
+
+export function saveJournalEntries(entries: ActivityJournalEntry[]): void {
+  setSetting('activityJournalLog', entries.slice(-MAX_JOURNAL_ENTRIES))
+}
+
+export interface JournalSnapshotInput {
+  appName: string
+  windowTitle: string
+  screenKind: ScreenKind
+  snippet: string
+  fingerprint: string
+  timestamp?: number
+}
+
+/** Merge into same minute + fingerprint bucket, or append. */
+export function appendJournalSnapshot(input: JournalSnapshotInput): ActivityJournalEntry {
+  const timestamp = input.timestamp ?? Date.now()
+  const minuteKey = minuteKeyFromDate(new Date(timestamp))
+  const entries = getJournalEntries()
+  const last = entries[entries.length - 1]
+
+  if (
+    last &&
+    last.minuteKey === minuteKey &&
+    last.fingerprint === input.fingerprint
+  ) {
+    last.durationSec += 60
+    last.timestamp = timestamp
+    if (input.snippet && input.snippet.length > last.snippet.length) {
+      last.snippet = input.snippet.slice(0, 400)
+    }
+    saveJournalEntries(entries)
+    return last
+  }
+
+  const entry: ActivityJournalEntry = {
+    id: `aj-${timestamp}`,
+    minuteKey,
+    timestamp,
+    appName: input.appName,
+    windowTitle: input.windowTitle,
+    screenKind: input.screenKind,
+    snippet: input.snippet.slice(0, 400),
+    fingerprint: input.fingerprint,
+    durationSec: 60
+  }
+
+  saveJournalEntries([...entries, entry])
+  return entry
+}
+
+export function getRecentJournalContext(maxMinutes = 30): string {
+  const entries = getJournalEntries()
+  if (entries.length === 0) return ''
+
+  const cutoff = Date.now() - maxMinutes * 60_000
+  const recent = entries.filter((e) => e.timestamp >= cutoff)
+  if (recent.length === 0) return ''
+
+  const lines = recent.slice(-maxMinutes).map((e) => {
+    const mins = Math.max(1, Math.round(e.durationSec / 60))
+    const title = e.windowTitle ? `${e.appName} — ${e.windowTitle}` : e.appName
+    const detail = e.snippet ? ` | ${e.snippet.slice(0, 120)}` : ''
+    return `- ${e.minuteKey} (${mins}m, ${e.screenKind}): ${title}${detail}`
+  })
+
+  return ['[ACTIVITY JOURNAL — recent focus]', ...lines].join('\n')
+}
+
+export function exportJournalMarkdown(entries = getJournalEntries()): string {
+  const byDay = new Map<string, ActivityJournalEntry[]>()
+  for (const entry of entries) {
+    const day = entry.minuteKey.slice(0, 10)
+    if (!byDay.has(day)) byDay.set(day, [])
+    byDay.get(day)!.push(entry)
+  }
+
+  const lines = ['# Specter Activity Journal', '', `Exported: ${new Date().toISOString()}`, '']
+
+  for (const [day, dayEntries] of [...byDay.entries()].sort()) {
+    lines.push(`## ${day}`, '')
+    for (const e of dayEntries) {
+      const mins = Math.max(1, Math.round(e.durationSec / 60))
+      lines.push(
+        `### ${e.minuteKey.slice(11)} — ${e.appName}`,
+        `- Window: ${e.windowTitle || '(unknown)'}`,
+        `- Kind: ${e.screenKind} · ${mins} min`,
+        e.snippet ? `- Snippet: ${e.snippet.slice(0, 200)}` : '',
+        ''
+      )
+    }
+  }
+
+  return lines.filter(Boolean).join('\n')
+}
+
+export function clearJournal(): void {
+  saveJournalEntries([])
+}

@@ -21,12 +21,16 @@ export interface UserSettings {
     toggleOverlay: string
     toggleAudio: string
     screenshotAsk: string
+    activeTabAsk: string
   }
   autoCapture: boolean
   autoCaptureInterval: number
   continuousCoach: boolean
   detectIntervalSec: number
   coachCooldownSec: number
+  fullAutoMode: boolean
+  activityJournal: boolean
+  journalIntervalSec: number
   assistantMode: AssistantMode
   perceptionMode: PerceptionMode
   coachSystemPrompt: string
@@ -110,6 +114,18 @@ export interface ScreenMetadata {
   windowTitle?: string
   textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
   displayCount?: number
+}
+
+export interface ActivityJournalEntry {
+  id: string
+  minuteKey: string
+  timestamp: number
+  appName: string
+  windowTitle: string
+  screenKind: string
+  snippet: string
+  fingerprint: string
+  durationSec: number
 }
 
 export interface Playbook {
