@@ -1,9 +1,25 @@
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import type { AssistantMode, ScreenCaptureResult } from '../shared/types'
 import { extractScreenContext } from './context-router'
-import { fingerprintScreenText } from './fingerprint'
+import { fingerprintJournalFocus } from './fingerprint'
 import { appendJournalSnapshot } from './activity-journal'
 import { getSetting } from './store'
+
+/** Stable focus key for adaptive journal logging (app + window + kind). */
+export function resolveJournalFocusFingerprint(capture: ScreenCaptureResult): string | null {
+  if (!capture.text.trim()) return null
+  const assistantMode = (getSetting<string>('assistantMode') || DEFAULT_SETTINGS.assistantMode) as AssistantMode
+  const ctx = extractScreenContext(capture.text, assistantMode, {
+    appName: capture.appName,
+    windowTitle: capture.windowTitle,
+    textSource: capture.textSource
+  })
+  return fingerprintJournalFocus(
+    capture.appName || 'Unknown',
+    capture.windowTitle || '',
+    ctx.kind
+  )
+}
 
 /** Log one journal row from a smart-crop screen capture (Watch pipeline). */
 export function appendJournalFromCapture(
@@ -19,9 +35,8 @@ export function appendJournalFromCapture(
     textSource: capture.textSource
   })
 
-  const fingerprint = fingerprintScreenText(
-    `${capture.appName}|${capture.windowTitle}|${capture.text.slice(0, 800)}`
-  )
+  const fingerprint = resolveJournalFocusFingerprint(capture)
+  if (!fingerprint) return
 
   const entry = appendJournalSnapshot({
     appName: capture.appName || 'Unknown',

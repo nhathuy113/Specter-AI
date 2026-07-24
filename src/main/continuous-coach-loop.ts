@@ -9,12 +9,14 @@ import { CoachTriggerEvaluator } from '../services/coach-state'
 import { createCoachTickRunner } from '../services/coach-tick-runner'
 import { getSetting } from '../services/store'
 import { captureScreenText } from './screen-capture'
-import { appendJournalFromCapture } from '../services/activity-journal-capture'
+import { appendJournalFromCapture, resolveJournalFocusFingerprint } from '../services/activity-journal-capture'
 import { syncOverlayBackgroundMode } from './overlay-window'
 
 let coachTimer: ReturnType<typeof setInterval> | null = null
 let coachOverlay: BrowserWindow | null = null
 let overlayCoachStreaming = false
+let lastJournalLogMs = 0
+let lastJournalFingerprint = ''
 
 const evaluator = new CoachTriggerEvaluator()
 const runCoachTick = createCoachTickRunner(evaluator)
@@ -62,19 +64,32 @@ async function coachTimerTick(): Promise<void> {
   }
 
   const cooldownSec = getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec
-  const detectIntervalSec = getSetting<number>('detectIntervalSec') || DEFAULT_SETTINGS.detectIntervalSec
+  const journalIntervalSec =
+    getSetting<number>('journalIntervalSec') || DEFAULT_SETTINGS.journalIntervalSec
   const result = await runCoachTickForTest({ cooldownSec })
 
   const journalEnabled =
     getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
   if (journalEnabled && result.capture?.text?.trim()) {
-    appendJournalFromCapture(result.capture, {
-      durationSec: detectIntervalSec,
-      capturePlan: 'window-crop'
-    })
+    const now = Date.now()
+    const fp = resolveJournalFocusFingerprint(result.capture) ?? ''
+    const focusChanged = fp !== '' && fp !== lastJournalFingerprint
+    const intervalElapsed = now - lastJournalLogMs >= journalIntervalSec * 1000
+
+    if (focusChanged || intervalElapsed) {
+      const elapsedSec = lastJournalLogMs
+        ? Math.max(1, Math.round((now - lastJournalLogMs) / 1000))
+        : journalIntervalSec
+      appendJournalFromCapture(result.capture, {
+        durationSec: elapsedSec,
+        capturePlan: 'window-crop'
+      })
+      lastJournalLogMs = now
+      lastJournalFingerprint = fp
+    }
   }
 
-  if (result.action === 'trigger' && !getSetting<boolean>('fullAutoMode') && !coachOverlay.isDestroyed()) {
+  if (result.action === 'trigger' && !coachOverlay.isDestroyed()) {
     coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
       screenText: result.screenText,
       timestamp: Date.now(),
@@ -93,6 +108,8 @@ export function stopContinuousCoach(): void {
   }
   coachOverlay = null
   overlayCoachStreaming = false
+  lastJournalLogMs = 0
+  lastJournalFingerprint = ''
   evaluator.reset()
 }
 
@@ -111,6 +128,7 @@ export function syncContinuousCoach(overlayWindow: BrowserWindow): void {
   coachOverlay = overlayWindow
   const fullAuto = getSetting<boolean>('fullAutoMode')
   const enabled = getSetting<boolean>('continuousCoach') || fullAuto
+  // Poll every detectIntervalSec; journal throttling is separate inside each tick
   const intervalSec = getSetting<number>('detectIntervalSec') || DEFAULT_SETTINGS.detectIntervalSec
 
   syncOverlayBackgroundMode()

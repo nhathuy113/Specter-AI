@@ -31,7 +31,32 @@ describe('activity-journal', () => {
     expect(key).toBe('2026-07-22T14:05')
   })
 
-  it('appends and merges same-minute fingerprints', () => {
+  it('merges consecutive same fingerprint across minutes (idle / away)', () => {
+    appendJournalSnapshot({
+      appName: 'Cursor',
+      windowTitle: 'App.tsx',
+      screenKind: 'ide',
+      snippet: 'function build()',
+      fingerprint: 'fp-idle',
+      timestamp: Date.parse('2026-07-22T14:05:30'),
+      durationSec: 60
+    })
+    appendJournalSnapshot({
+      appName: 'Cursor',
+      windowTitle: 'App.tsx',
+      screenKind: 'ide',
+      snippet: 'function buildApp()',
+      fingerprint: 'fp-idle',
+      timestamp: Date.parse('2026-07-22T14:06:30'),
+      durationSec: 60
+    })
+
+    const entries = getJournalEntries()
+    expect(entries).toHaveLength(1)
+    expect(entries[0].durationSec).toBe(120)
+  })
+
+  it('appends and merges same focus session within a minute', () => {
     const ts = Date.parse('2026-07-22T14:05:30')
     appendJournalSnapshot({
       appName: 'Cursor',

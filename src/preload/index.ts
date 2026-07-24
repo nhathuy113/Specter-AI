@@ -48,6 +48,7 @@ export interface SpecterAPI {
   getSetting: <T>(key: string) => Promise<T>
   setSetting: (key: string, value: unknown) => Promise<void>
   getAllSettings: () => Promise<Record<string, unknown>>
+  listDisplays: () => Promise<Array<{ id: number; label: string; bounds: { x: number; y: number; width: number; height: number }; isPrimary: boolean }>>
 
   // Models
   fetchModels: () => Promise<Array<{ id: string; name: string; pricing: { prompt: string; completion: string }; context_length: number }>>
@@ -57,7 +58,7 @@ export interface SpecterAPI {
   onHotkeyScreenshot: (callback: () => void) => () => void
   onHotkeyToggleAudio: (callback: () => void) => () => void
   onHotkeyToggleOverlay: (callback: () => void) => () => void
-  onHotkeyActiveTab: (callback: () => void) => () => void
+  onWorkAutoToggled: (callback: (data: { enabled: boolean }) => void) => () => void
 
   // Activity journal
   listActivityJournal: () => Promise<Array<{ id: string; minuteKey: string; timestamp: number; appName: string; windowTitle: string; screenKind: string; snippet: string; fingerprint: string; durationSec: number }>>
@@ -96,6 +97,9 @@ export interface SpecterAPI {
 
   // Overlay opacity — applied via CSS (not native) to avoid WS_EX_LAYERED breaking WDA_EXCLUDEFROMCAPTURE
   onOpacityChange: (callback: (opacity: number) => void) => () => void
+  onOverlayPillMode: (callback: (data: { minimized: boolean }) => void) => () => void
+  expandOverlay: () => void
+  collapseOverlay: () => void
 }
 
 // --- Type guard helpers for IPC callback data ---
@@ -208,6 +212,7 @@ const api: SpecterAPI = {
     return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, key, value)
   },
   getAllSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_ALL),
+  listDisplays: () => ipcRenderer.invoke(IPC_CHANNELS.DISPLAYS_LIST),
 
   // Models
   fetchModels: () => ipcRenderer.invoke(IPC_CHANNELS.MODELS_FETCH),
@@ -233,10 +238,14 @@ const api: SpecterAPI = {
     ipcRenderer.on(IPC_CHANNELS.HOTKEY_TOGGLE_OVERLAY, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.HOTKEY_TOGGLE_OVERLAY, handler)
   },
-  onHotkeyActiveTab: (callback) => {
-    const handler = () => callback()
-    ipcRenderer.on(IPC_CHANNELS.HOTKEY_ACTIVE_TAB, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.HOTKEY_ACTIVE_TAB, handler)
+  onWorkAutoToggled: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
+      if (typeof data === 'object' && data !== null && typeof (data as { enabled?: unknown }).enabled === 'boolean') {
+        callback({ enabled: (data as { enabled: boolean }).enabled })
+      }
+    }
+    ipcRenderer.on(IPC_CHANNELS.WORK_AUTO_TOGGLED, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.WORK_AUTO_TOGGLED, handler)
   },
 
   listActivityJournal: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_JOURNAL_LIST),
@@ -322,7 +331,20 @@ const api: SpecterAPI = {
     }
     ipcRenderer.on(IPC_CHANNELS.OVERLAY_SET_OPACITY, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.OVERLAY_SET_OPACITY, handler)
-  }
+  },
+
+  onOverlayPillMode: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
+      if (typeof data === 'object' && data !== null && typeof (data as { minimized?: unknown }).minimized === 'boolean') {
+        callback({ minimized: (data as { minimized: boolean }).minimized })
+      }
+    }
+    ipcRenderer.on(IPC_CHANNELS.OVERLAY_SET_PILL_MODE, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.OVERLAY_SET_PILL_MODE, handler)
+  },
+
+  expandOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_EXPAND),
+  collapseOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_COLLAPSE)
 }
 
 contextBridge.exposeInMainWorld('specterAPI', api)

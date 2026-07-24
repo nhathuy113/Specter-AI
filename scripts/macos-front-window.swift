@@ -1,7 +1,16 @@
 #!/usr/bin/env swift
-// Read frontmost window bounds without activating System Events (no focus steal).
+// Read frontmost window bounds, or restore focus to a PID (background capture).
 import Cocoa
 import CoreGraphics
+
+if CommandLine.arguments.count >= 3 && CommandLine.arguments[1] == "--activate-pid" {
+    if let pid = Int32(CommandLine.arguments[2]),
+       let app = NSRunningApplication(processIdentifier: pid),
+       app.bundleIdentifier != Bundle.main.bundleIdentifier {
+        app.activate(options: [])
+    }
+    exit(0)
+}
 
 guard let app = NSWorkspace.shared.frontmostApplication else {
     print("")
@@ -10,6 +19,7 @@ guard let app = NSWorkspace.shared.frontmostApplication else {
 
 let pid = app.processIdentifier
 let appName = app.localizedName ?? ""
+let bundleId = app.bundleIdentifier ?? ""
 let opts = CGWindowListOption(arrayLiteral: .optionOnScreenOnly, .excludeDesktopElements)
 guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else {
     print("")
@@ -26,7 +36,7 @@ for w in list {
     let x = Int(bounds["X"] ?? 0)
     let y = Int(bounds["Y"] ?? 0)
     let title = (w[kCGWindowName as String] as? String) ?? ""
-    print("\(x)|\(y)|\(width)|\(height)|\(appName)|\(title)")
+    print("\(x)|\(y)|\(width)|\(height)|\(pid)|\(bundleId)|\(appName)|\(title)")
     exit(0)
 }
 

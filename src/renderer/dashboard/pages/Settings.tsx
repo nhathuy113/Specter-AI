@@ -46,6 +46,8 @@ interface SettingsState {
   whisperModel: string
   autoHideDelay: number
   smartCrop: boolean
+  workAreaCaptureEnabled: boolean
+  workAreaDisplayId: number
 }
 
 const DEFAULT_STATE: SettingsState = {
@@ -56,7 +58,7 @@ const DEFAULT_STATE: SettingsState = {
   geminiApiKey: '',
   geminiModel: 'gemini-3.1-flash-lite',
   codexModel: 'gpt-5.4',
-  overlayOpacity: 0.85,
+  overlayOpacity: 0.95,
   autoCapture: false,
   autoCaptureInterval: 30,
   continuousCoach: false,
@@ -85,7 +87,9 @@ const DEFAULT_STATE: SettingsState = {
   whisperApiUrl: '',
   whisperModel: '',
   autoHideDelay: 0,
-  smartCrop: true
+  smartCrop: true,
+  workAreaCaptureEnabled: false,
+  workAreaDisplayId: 0
 }
 
 export default function Settings() {
@@ -102,6 +106,7 @@ export default function Settings() {
   const [geminiKeyValid, setGeminiKeyValid] = useState<boolean | null>(null)
   const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [displays, setDisplays] = useState<Array<{ id: number; label: string; bounds: { width: number; height: number }; isPrimary: boolean }>>([])
 
   // Hotkey recording state
   const [recordingHotkey, setRecordingHotkey] = useState<keyof SettingsState['hotkeys'] | null>(null)
@@ -110,6 +115,7 @@ export default function Settings() {
   // Load settings on mount
   useEffect(() => {
     loadSettings()
+    void window.specterAPI.listDisplays?.().then(setDisplays).catch(() => {})
   }, [])
 
   const loadSettings = async () => {
@@ -123,7 +129,7 @@ export default function Settings() {
         geminiApiKey: all.geminiApiKey || '',
         geminiModel: all.geminiModel || 'gemini-2.5-flash',
         codexModel: all.codexModel || 'gpt-5.4',
-        overlayOpacity: all.overlayOpacity || 0.85,
+        overlayOpacity: all.overlayOpacity || 0.95,
         autoCapture: all.autoCapture || false,
         autoCaptureInterval: all.autoCaptureInterval || 30,
         continuousCoach: all.continuousCoach || false,
@@ -146,7 +152,9 @@ export default function Settings() {
         whisperApiUrl: all.whisperApiUrl || '',
         whisperModel: all.whisperModel || '',
         autoHideDelay: typeof all.autoHideDelay === 'number' ? all.autoHideDelay : 0,
-        smartCrop: all.smartCrop || false
+        smartCrop: all.smartCrop || false,
+        workAreaCaptureEnabled: !!(all as SettingsState).workAreaCaptureEnabled,
+        workAreaDisplayId: (all as SettingsState).workAreaDisplayId || 0
       })
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -189,6 +197,8 @@ export default function Settings() {
       await api.setSetting('whisperModel', settings.whisperModel)
       await api.setSetting('autoHideDelay', settings.autoHideDelay)
       await api.setSetting('smartCrop', settings.smartCrop)
+      await api.setSetting('workAreaCaptureEnabled', settings.workAreaCaptureEnabled)
+      await api.setSetting('workAreaDisplayId', settings.workAreaDisplayId)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
@@ -721,7 +731,7 @@ export default function Settings() {
           {/* Opacity */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-white/50">Opacity</label>
+              <label className="text-sm text-white/50">Glass opacity</label>
               <span className="text-xs text-white/30 font-mono">
                 {Math.round(settings.overlayOpacity * 100)}%
               </span>
@@ -851,6 +861,59 @@ export default function Settings() {
             </button>
           </div>
 
+          {/* Pinned work display — dual-monitor study setup */}
+          <div className="space-y-3 pt-2 border-t border-white/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm text-white/50">Work Area Capture</label>
+                <p className="text-xs text-white/20 mt-0.5">
+                  Always OCR/coach one pinned monitor — focus can stay on Cursor/notes on another screen.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setSettings((prev) => {
+                    const nextEnabled = !prev.workAreaCaptureEnabled
+                    let displayId = prev.workAreaDisplayId
+                    if (nextEnabled && !displayId && displays.length > 0) {
+                      const ext = displays.find((d) => !d.isPrimary) ?? displays[0]
+                      displayId = ext.id
+                    }
+                    return { ...prev, workAreaCaptureEnabled: nextEnabled, workAreaDisplayId: displayId }
+                  })
+                }}
+                className={`relative w-11 h-6 rounded-full transition-colors ${
+                  settings.workAreaCaptureEnabled ? 'bg-violet-500' : 'bg-white/10'
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    settings.workAreaCaptureEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+            {settings.workAreaCaptureEnabled && (
+              <div>
+                <label className="text-sm text-white/50 block mb-2">Pinned monitor</label>
+                <select
+                  value={settings.workAreaDisplayId || ''}
+                  onChange={(e) => updateSetting('workAreaDisplayId', parseInt(e.target.value, 10) || 0)}
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
+                             text-white/90 focus:border-violet-500/40 focus:outline-none w-full max-w-md"
+                >
+                  {displays.length === 0 && <option value="">Loading displays…</option>}
+                  {displays.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label} — {d.bounds.width}×{d.bounds.height}
+                      {d.isPrimary ? ' (primary)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           {settings.autoCapture && (
             <div>
               <label className="text-sm text-white/50 block mb-2">
@@ -931,7 +994,7 @@ export default function Settings() {
                            text-white/90 focus:border-violet-500/40 focus:outline-none w-32"
               />
               <p className="text-xs text-white/20 mt-1">
-                Used only when Watch is off. With Watch on, journal logs every detect tick (~{settings.detectIntervalSec}s).
+                Logs every {settings.fullAutoMode ? '~' + settings.journalIntervalSec + 's (full auto uses journal interval, not detect tick)' : settings.journalIntervalSec + 's when Watch is off. With Watch on, throttled to this interval.'}.
               </p>
             </div>
           )}
@@ -1095,7 +1158,7 @@ export default function Settings() {
             { key: 'toggleOverlay' as const, label: 'Toggle Overlay', desc: 'Show/hide the overlay' },
             { key: 'toggleAudio' as const, label: 'Toggle Audio', desc: 'Start/stop recording' },
             { key: 'screenshotAsk' as const, label: 'Screenshot + Ask', desc: 'Capture screen and ask AI' },
-            { key: 'activeTabAsk' as const, label: 'Active tab (double ⌘/)', desc: 'Double-tap ⌘/ like // → ask about active tab' }
+            { key: 'activeTabAsk' as const, label: 'Work auto (double ⌘/)', desc: 'Double-tap ⌘/ → bật/tắt chế độ auto (coach liên tục trên màn MacBook)' }
           ]).map((item) => (
             <div key={item.key} className="flex items-center justify-between py-2">
               <div>

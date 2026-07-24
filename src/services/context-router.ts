@@ -165,8 +165,19 @@ function taskForMode(mode: AssistantMode, kind: ScreenKind): string[] {
   ]
 
   if (mode === 'work' || (mode === 'general' && kind === 'code')) {
+    if (mode === 'work' && kind === 'browser') {
+      return [
+        'User is studying in a browser (video, article, slides, lecture board).',
+        'Explain what is on screen like a teacher at the board: topic → each bullet/chart/formula → meaning of visible numbers.',
+        'Quote stats and labels exactly. Use plain Vietnamese if content is Vietnamese.',
+        'Do NOT redirect to other apps or files. Optional: one short recap sentence at the end.'
+      ]
+    }
     return [
-      'Focus on work, coding, and debugging visible on screen.',
+      'Focus on work visible on screen: homework, exercises, quizzes, coding, debugging.',
+      'If a question or problem is visible: answer it directly or give the next concrete step.',
+      'If code/errors are visible: suggest the fix or snippet to write next.',
+      'Use the same language as the question (Vietnamese or English).',
       'If errors are listed, give the most likely fix first, then a next debug step.',
       ...base
     ]

@@ -118,7 +118,15 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   whisperApiUrl: (v) => typeof v === 'string' && v.length <= 500,
   whisperModel: (v) => typeof v === 'string' && v.length <= 200,
   autoHideDelay: (v) => typeof v === 'number' && v >= 0 && v <= 300,
-  smartCrop: (v) => typeof v === 'boolean'
+  smartCrop: (v) => typeof v === 'boolean',
+  workAreaCaptureEnabled: (v) => typeof v === 'boolean',
+  workAreaDisplayId: (v) => typeof v === 'number' && v >= 0,
+  workCoachSession: (v) => {
+    if (v === null || v === undefined) return true
+    if (typeof v !== 'object') return false
+    const s = v as Record<string, unknown>
+    return typeof s.sessionKey === 'string' && typeof s.thread === 'string' && typeof s.updatedAt === 'number'
+  }
 }
 
 /** Returns the set of allowed settings keys */
@@ -173,6 +181,12 @@ function migrateSettings(s: Store<Record<string, unknown>>): void {
   if (hotkeys && !hotkeys.activeTabAsk) {
     s.set('hotkeys', { ...DEFAULT_SETTINGS.hotkeys, ...hotkeys })
     console.info('[Specter] Migrated hotkeys — added activeTabAsk (double ⌘/)')
+  }
+
+  const opacity = s.get('overlayOpacity') as number | undefined
+  if (opacity === 0.85) {
+    s.set('overlayOpacity', DEFAULT_SETTINGS.overlayOpacity)
+    console.info('[Specter] Migrated overlay opacity → macOS glass default (95%)')
   }
 }
 
@@ -348,7 +362,9 @@ export function getAllSettings(): UserSettings {
     whisperApiUrl: s.get('whisperApiUrl') as string,
     whisperModel: s.get('whisperModel') as string,
     autoHideDelay: s.get('autoHideDelay') as number,
-    smartCrop: s.get('smartCrop') as boolean
+    smartCrop: s.get('smartCrop') as boolean,
+    workAreaCaptureEnabled: s.get('workAreaCaptureEnabled') as boolean,
+    workAreaDisplayId: s.get('workAreaDisplayId') as number
   }
 }
 

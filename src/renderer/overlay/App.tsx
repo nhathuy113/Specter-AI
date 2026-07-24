@@ -49,6 +49,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [historyList, setHistoryList] = useState<Conversation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [autoModeHint, setAutoModeHint] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -85,12 +86,18 @@ export default function App() {
   // Auto-capture: latest screen text from main process timer
   const autoCaptureTextRef = useRef<string>('')
   const isCoachQueryRef = useRef(false)
+  const autoModeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const finishCoachStreaming = useCallback(() => {
     if (!isCoachQueryRef.current) return
     isCoachQueryRef.current = false
     window.specterAPI?.setCoachStreaming(false)
   }, [])
+
+  const stripCoachThreadMarker = (text: string) => {
+    const idx = text.indexOf('---THREAD---')
+    return idx < 0 ? text : text.slice(0, idx).trim()
+  }
 
   // Ref for stopRecording to avoid stale closure in setInterval
   const stopRecordingRef = useRef<() => void>(() => {})
@@ -107,11 +114,23 @@ export default function App() {
       setTheme(resolved)
       document.documentElement.setAttribute('data-theme', resolved)
     })
+    window.specterAPI?.getSetting<number>('overlayOpacity').then((o) => {
+      if (typeof o === 'number' && o >= 0.3 && o <= 1) {
+        document.documentElement.style.setProperty('--specter-glass-strength', String(o))
+      }
+    })
     window.specterAPI?.getSetting<string>('selectedModel').then((m) => {
       if (m) setSelectedModel(m)
     })
     window.specterAPI?.getSetting<number>('autoHideDelay').then((d) => {
       if (typeof d === 'number' && d >= 0) setAutoHideDelay(d)
+    })
+    Promise.all([
+      window.specterAPI?.getSetting<boolean>('fullAutoMode'),
+      window.specterAPI?.getSetting<boolean>('continuousCoach'),
+      window.specterAPI?.getSetting<boolean>('activityJournal')
+    ]).then(([fullAuto, coach, journal]) => {
+      if (fullAuto || coach || journal) setIsMinimized(true)
     })
   }, [])
 
@@ -145,19 +164,23 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
-  // --- CSS-based opacity (replaces native win.setOpacity) ---
-  // Native BrowserWindow opacity adds WS_EX_LAYERED on Windows, which causes
-  // SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) to be silently ignored.
-  // Instead, the main process sends opacity values via IPC and we apply them via CSS.
+  // Glass strength via CSS variable (not whole-window opacity — keeps text crisp like macOS vibrancy)
   useEffect(() => {
     const api = window.specterAPI
     if (!api?.onOpacityChange) return
 
-    const unsub = api.onOpacityChange((opacity) => {
-      document.documentElement.style.opacity = String(opacity)
+    const unsubOpacity = api.onOpacityChange((opacity) => {
+      document.documentElement.style.setProperty('--specter-glass-strength', String(opacity))
     })
 
-    return unsub
+    const unsubPill = api.onOverlayPillMode?.(({ minimized }) => {
+      setIsMinimized(minimized)
+    })
+
+    return () => {
+      unsubOpacity()
+      unsubPill?.()
+    }
   }, [])
 
   // --- Click-through is NOT needed ---
@@ -175,6 +198,7 @@ export default function App() {
       if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current)
       autoHideTimerRef.current = setTimeout(() => {
         setIsMinimized(true)
+        window.specterAPI?.collapseOverlay()
       }, autoHideDelay * 1000)
     }
 
@@ -477,8 +501,6 @@ export default function App() {
       timestamp: Date.now()
     }
 
-    const history = getMessageHistory()
-
     setMessages((prev) => [...prev, userMessage])
     setError(null)
     setIsStreaming(true)
@@ -486,10 +508,10 @@ export default function App() {
     pendingCostRef.current = null
 
     window.specterAPI?.queryAI(
-      'Recommend the next step based on the new screen content.',
+      'Giải thích phần mới trên màn hình (bài/slide/bảng) — tiếp session, dạy từng bước bằng tiếng Việt.',
       false,
       false,
-      history,
+      [], // screen-only — no chat history (avoids HOI4/mod bleed)
       {
         screenTextOverride: payload.screenText,
         screenshotOverride: payload.screenshot,
@@ -538,41 +560,16 @@ export default function App() {
     setAttachedScreenshot(null)
   }, [isCapturing, getMessageHistory, ensureAiConfigured])
 
-  /** Double-tap ⌘/ — prompt Gemini about the active tab/window. */
-  const analyzeActiveTab = useCallback(async () => {
-    if (isStreamingRef.current) return
-    if (isCapturing) return
-    if (!(await ensureAiConfigured())) return
-
-    setIsCapturing(true)
-
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: '[Active tab] What am I doing? Best next step?',
-      timestamp: Date.now()
+  const showAutoModeHint = useCallback((enabled: boolean) => {
+    if (autoModeHintTimerRef.current) {
+      clearTimeout(autoModeHintTimerRef.current)
     }
-
-    const history = getMessageHistory()
-
-    setMessages((prev) => [...prev, userMessage])
-    setQuery('')
-    setError(null)
-    setIsStreaming(true)
-    setStreamingContent('')
-    pendingCostRef.current = null
-
-    window.specterAPI?.queryAI(
-      'What am I doing in the active tab/window right now? Recommend the single best next step.',
-      true,
-      isRecordingRef.current,
-      history,
-      { coachMode: true, activeTabMode: true }
-    )
-
-    setIsCapturing(false)
-    setAttachedScreenshot(null)
-  }, [isCapturing, getMessageHistory, ensureAiConfigured])
+    setAutoModeHint(enabled ? 'Auto ON' : 'Auto OFF')
+    autoModeHintTimerRef.current = setTimeout(() => {
+      setAutoModeHint(null)
+      autoModeHintTimerRef.current = null
+    }, 2500)
+  }, [])
 
   /**
    * Submit meeting transcript to AI — called by MeetingRecorder after transcription.
@@ -747,12 +744,13 @@ export default function App() {
       setStreamingContent((prev) => {
         if (prev) {
           const costData = pendingCostRef.current
+          const content = isCoachQueryRef.current ? stripCoachThreadMarker(prev) : prev
           setMessages((msgs) => [
             ...msgs,
             {
               id: `assistant-${Date.now()}`,
               role: 'assistant',
-              content: prev,
+              content,
               timestamp: Date.now(),
               tokenCount: costData?.totalTokens,
               cost: costData?.totalCost
@@ -811,8 +809,8 @@ export default function App() {
       doSubmit(true)
     })
 
-    const unsubHotkeyActiveTab = api.onHotkeyActiveTab(() => {
-      analyzeActiveTab()
+    const unsubWorkAuto = api.onWorkAutoToggled(({ enabled }) => {
+      showAutoModeHint(enabled)
     })
 
     const unsubHotkeyAudio = api.onHotkeyToggleAudio(() => {
@@ -833,12 +831,12 @@ export default function App() {
       unsubError()
       unsubHotkeyAsk()
       unsubHotkeyScreenshot()
-      unsubHotkeyActiveTab()
+      unsubWorkAuto()
       unsubHotkeyAudio()
       unsubAutoCapture()
       unsubCoachTrigger()
     }
-  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming, analyzeActiveTab])
+  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming, showAutoModeHint])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -849,20 +847,23 @@ export default function App() {
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+      <div className="w-full h-full flex items-center justify-center gap-1.5 px-1">
         <button
-          onClick={() => setIsMinimized(false)}
-          className="specter-pill group flex items-center gap-2 px-4 py-2 rounded-full
-                     bg-specter-dark/90 border border-violet-500/30
-                     hover:border-violet-500/60 transition-all duration-300"
+          onClick={() => {
+            setIsMinimized(false)
+            window.specterAPI?.expandOverlay()
+          }}
+          className="specter-pill-glass group flex items-center gap-2 px-3 py-1.5 rounded-full
+                     border-2 border-violet-400/50
+                     hover:border-violet-400/80 transition-all duration-300"
         >
-          <div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
-          <span className="text-white/80 text-sm font-medium">Specter</span>
+          <div className={`w-2 h-2 rounded-full animate-pulse ${autoModeHint === 'Auto ON' ? 'bg-emerald-400' : autoModeHint === 'Auto OFF' ? 'bg-amber-400' : 'bg-violet-500'}`} />
+          <span className="text-white/80 text-sm font-medium">{autoModeHint ?? 'Specter'}</span>
           <Maximize2 className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors" />
         </button>
         <button
           onClick={() => window.specterAPI?.quit()}
-          className="p-2 rounded-full bg-specter-dark/90 border border-white/10
+          className="specter-pill-glass p-2 rounded-full border border-white/10
                      hover:border-red-500/40 hover:bg-red-500/10 transition-all duration-300"
           title="Quit Specter"
         >
@@ -875,19 +876,15 @@ export default function App() {
   return (
     <div
       ref={containerRef}
-      className="h-screen w-full flex flex-col rounded-2xl overflow-hidden"
+      className="specter-overlay-panel h-screen w-full flex flex-col rounded-2xl overflow-hidden"
       style={{
-        WebkitAppRegion: 'no-drag',
-        background: 'var(--specter-surface)',
-        borderColor: 'var(--specter-border)',
-        borderWidth: '1px',
-        borderStyle: 'solid'
+        WebkitAppRegion: 'no-drag'
       } as React.CSSProperties}
     >
       {/* Title bar — draggable */}
       <div
-        className="flex items-center justify-between px-4 py-2 cursor-move select-none"
-        style={{ WebkitAppRegion: 'drag', borderBottom: '1px solid var(--specter-border)' } as React.CSSProperties}
+        className="specter-overlay-chrome flex items-center justify-between px-4 py-2 cursor-move select-none"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-2">
           <GripVertical className="w-3.5 h-3.5 text-white/30" />
@@ -921,7 +918,10 @@ export default function App() {
             <Settings className="w-3.5 h-3.5 text-white/40 hover:text-white/70" />
           </button>
           <button
-            onClick={() => setIsMinimized(true)}
+            onClick={() => {
+              setIsMinimized(true)
+              window.specterAPI?.collapseOverlay()
+            }}
             className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
             title="Minimize to pill"
           >
@@ -1059,7 +1059,7 @@ export default function App() {
       )}
 
       {/* Messages area */}
-      <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''}`}>
+      <div className={`specter-overlay-messages flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''}`}>
         {messages.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl bg-violet-500/20 flex items-center justify-center mb-4">
@@ -1182,7 +1182,7 @@ export default function App() {
 
       {/* Input area */}
       {!showHistory && (
-      <div className="px-3 pb-3 pt-1">
+      <div className="specter-overlay-input px-3 pb-3 pt-1">
         {/* Quick actions row — visible when there are messages */}
         {messages.length > 0 && !isStreaming && (
           <div className="flex items-center gap-1.5 mb-1.5">

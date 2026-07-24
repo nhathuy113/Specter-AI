@@ -1,13 +1,16 @@
-// Global hotkey registration for Specter AI
-import { globalShortcut, BrowserWindow } from 'electron'
+import { globalShortcut, type BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { getSetting } from '../services/store'
 import { DEFAULT_HOTKEYS } from '../shared/constants'
 import { showOverlay, toggleOverlay } from './overlay-window'
+import { toggleWorkAutoMode } from './work-auto-mode'
+import {
+  nextActiveTabPressMs,
+  shouldFireActiveTabDoubleTap
+} from '../services/hotkey-double-tap'
 
 let overlayRef: BrowserWindow | null = null
 let lastActiveTabPressMs = 0
-const ACTIVE_TAB_DOUBLE_TAP_MS = 450
 
 export function registerHotkeys(overlayWindow: BrowserWindow): void {
   overlayRef = overlayWindow
@@ -69,17 +72,15 @@ function applyHotkeys(): void {
     console.warn('[Specter] Failed to register toggleAudio hotkey:', e)
   }
 
-  // Double-tap ⌘/ within 450ms ≈ typing // → prompt active tab
+  // Double-tap ⌘/ within 450ms → toggle work auto mode (continuous watch + explain)
   try {
     globalShortcut.register(hotkeys.activeTabAsk, () => {
       if (!win || win.isDestroyed()) return
       const now = Date.now()
-      if (now - lastActiveTabPressMs <= ACTIVE_TAB_DOUBLE_TAP_MS) {
-        lastActiveTabPressMs = 0
-        showOverlay({ focus: true, force: true })
-        win.webContents.send(IPC_CHANNELS.HOTKEY_ACTIVE_TAB)
-      } else {
-        lastActiveTabPressMs = now
+      const action = shouldFireActiveTabDoubleTap(lastActiveTabPressMs, now)
+      lastActiveTabPressMs = nextActiveTabPressMs(action, now)
+      if (action === 'double-tap') {
+        toggleWorkAutoMode(win)
       }
     })
   } catch (e) {

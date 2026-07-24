@@ -18,8 +18,9 @@ import {
   type SmartCropPlan
 } from '../services/display-capture'
 import { resolveSmartCapturePlan } from '../services/smart-capture'
+import { planPinnedWorkDisplay, workAreaCaptureActive } from '../services/work-area-capture'
 import { getOverlayWindow, isOverlayBackgroundWatch, releaseForegroundAfterBackgroundWork, showOverlay } from './overlay-window'
-import { getMacOSFrontWindowInfo } from './macos-front-window'
+import { getMacOSFrontWindowInfo, rememberMacOSForegroundForRestore } from './macos-front-window'
 
 let isCapturing = false
 
@@ -336,6 +337,10 @@ export async function captureScreenText(
 
   isCapturing = true
 
+  if (isOverlayBackgroundWatch() && process.platform === 'darwin') {
+    rememberMacOSForegroundForRestore(getMacOSFrontWindowInfo())
+  }
+
   // Detect active window BEFORE hiding overlay (so the user's actual window is still focused)
   let activeWindowBounds: WindowBounds | null = null
   let frontWindowMeta: ReturnType<typeof getMacOSFrontWindowInfo> = null
@@ -363,7 +368,16 @@ export async function captureScreenText(
     let imgBuffer: Buffer
     const displays = listElectronDisplays()
     const displayCount = displays.length
-    if (activeWindowOnly) {
+    const workEnabled = getSetting<boolean>('workAreaCaptureEnabled')
+    const workDisplayId = getSetting<number>('workAreaDisplayId')
+    const pinnedPlan =
+      workAreaCaptureActive(workEnabled, workDisplayId) &&
+      planPinnedWorkDisplay(displays, workDisplayId)
+
+    if (pinnedPlan) {
+      imgBuffer = await captureFromPlan(pinnedPlan)
+      console.info(`[Specter] Work area capture: ${pinnedPlan.display.label} (full display)`)
+    } else if (activeWindowOnly) {
       const plan = resolveSmartCapturePlan(activeWindowBounds, displays)
       if (plan) {
         imgBuffer = await captureFromPlan(plan)
@@ -390,8 +404,12 @@ export async function captureScreenText(
     const ocrText = await ocrInWorker(imgBuffer)
     const perception = resolvePerceptionPlan(mode, ocrText, axResult)
 
-    const appName = perception.appName ?? frontWindowMeta?.appName
-    const windowTitle = perception.windowTitle ?? frontWindowMeta?.windowTitle
+    const appName = pinnedPlan
+      ? `Work: ${pinnedPlan.display.label}`
+      : (perception.appName ?? frontWindowMeta?.appName)
+    const windowTitle = pinnedPlan
+      ? 'pinned-work-display'
+      : (perception.windowTitle ?? frontWindowMeta?.windowTitle)
 
     return {
       text: perception.text,
@@ -436,6 +454,74 @@ export async function captureScreenOnly(): Promise<{ screenshot: string; timesta
     if (wasVisible) restoreOverlay()
     const message = err instanceof Error ? err.message : 'Screen capture failed'
     throw new Error(message)
+  }
+}
+
+/**
+ * Game Mode — smart-crop screenshot + front-window metadata, no OCR (1s cadence).
+ */
+export async function captureGameFrame(): Promise<{
+  pngBuffer: Buffer
+  screenshot: string
+  appName: string
+  windowTitle: string
+  timestamp: number
+}> {
+  if (isCapturing) {
+    throw new Error('Screen capture already in progress')
+  }
+
+  isCapturing = true
+  let frontWindowMeta: ReturnType<typeof getMacOSFrontWindowInfo> = null
+  let activeWindowBounds: WindowBounds | null = null
+
+  if (process.platform === 'darwin') {
+    frontWindowMeta = getMacOSFrontWindowInfo()
+    if (isOverlayBackgroundWatch()) {
+      rememberMacOSForegroundForRestore(frontWindowMeta)
+    }
+    if (frontWindowMeta) {
+      activeWindowBounds = {
+        x: frontWindowMeta.x,
+        y: frontWindowMeta.y,
+        width: frontWindowMeta.width,
+        height: frontWindowMeta.height,
+        title: frontWindowMeta.windowTitle || frontWindowMeta.appName
+      }
+    }
+  } else {
+    activeWindowBounds = getActiveWindowBounds()
+  }
+
+  const wasVisible = hideOverlayForCapture()
+  try {
+    if (wasVisible) await waitForRepaint()
+
+    const displays = listElectronDisplays()
+    const plan = resolveSmartCapturePlan(activeWindowBounds, displays)
+    let imgBuffer: Buffer
+    if (plan) {
+      imgBuffer = await captureFromPlan(plan)
+    } else {
+      imgBuffer = await captureDisplayScreenshot()
+    }
+
+    if (wasVisible) restoreOverlay()
+
+    return {
+      pngBuffer: imgBuffer,
+      screenshot: imgBuffer.toString('base64'),
+      appName: frontWindowMeta?.appName || 'Unknown',
+      windowTitle: frontWindowMeta?.windowTitle || '',
+      timestamp: Date.now()
+    }
+  } catch (err: unknown) {
+    if (wasVisible) restoreOverlay()
+    const message = err instanceof Error ? err.message : 'Game frame capture failed'
+    throw new Error(message)
+  } finally {
+    isCapturing = false
+    releaseForegroundAfterBackgroundWork()
   }
 }
 

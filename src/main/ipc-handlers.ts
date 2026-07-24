@@ -1,5 +1,5 @@
 // IPC handlers — bridge between main and renderer processes
-import { ipcMain, BrowserWindow, app, shell } from 'electron'
+import { ipcMain, BrowserWindow, app, shell, screen } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { getSetting, setSetting, getAllSettings, getConversations, saveConversation, deleteConversation, clearConversations, isValidSetting } from '../services/store'
 import { streamCompletion, cancelStream, fetchAvailableModels, estimateCost, getCachedModels } from '../services/openrouter'
@@ -9,15 +9,22 @@ import { buildVisionUserTask } from '../services/perception'
 import { streamCodexCompletion, cancelCodexStream } from '../services/codex'
 import { buildSystemPrompt, buildUserMessage, estimateTokens } from '../services/context-builder'
 import { buildCoachSystemPrompt, resolveCoachRequest, buildActiveTabUserMessage } from '../services/coach-prompt'
+import {
+  appendWorkCoachContext,
+  getWorkCoachThread,
+  updateWorkCoachThread
+} from '../services/work-coach-session'
 import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
 import { getRecentJournalContext, getJournalEntries, exportJournalMarkdown, clearJournal } from '../services/activity-journal'
 import { syncActivityJournal, stopActivityJournal } from './activity-journal-loop'
+import { syncHourlyReportLoop, stopHourlyReportLoop } from './hourly-report-loop'
+import { syncGameCaptureLoop, stopGameCaptureLoop } from './game-capture-loop'
 import { checkAiConfig } from '../services/ai-config'
 import { captureScreenText, captureScreenOnly } from './screen-capture'
 import { syncContinuousCoach, stopContinuousCoach, setOverlayCoachStreaming } from './continuous-coach-loop'
 import { transcribeAudio, getTranscript, checkWhisperConfig } from './audio-capture'
 import { createDashboardWindow } from './dashboard-window'
-import { setOverlayOpacity } from './overlay-window'
+import { setOverlayOpacity, expandOverlayWindow, showOverlayPill } from './overlay-window'
 import { reRegisterHotkeys } from './hotkey-manager'
 import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS, GEMINI_MODELS } from '../shared/constants'
 import type { AssistantMode, PerceptionMode, ScreenMetadata } from '../shared/types'
@@ -226,9 +233,12 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       useVision = args.useVisionOverride ?? false
     } else if (args.includeScreen) {
       try {
+        const fullAuto = getSetting<boolean>('fullAutoMode')
         const smartCrop = getSetting<boolean>('smartCrop') || false
-        const perceptionMode = (getSetting<string>('perceptionMode') || DEFAULT_SETTINGS.perceptionMode) as PerceptionMode
-        const capture = await captureScreenText(smartCrop, perceptionMode)
+        const perceptionMode = fullAuto
+          ? ('ocr' as PerceptionMode)
+          : ((getSetting<string>('perceptionMode') || DEFAULT_SETTINGS.perceptionMode) as PerceptionMode)
+        const capture = await captureScreenText(smartCrop, perceptionMode, { skipAccessibility: fullAuto })
         screenText = capture.text
         screenScreenshot = capture.screenshot
         useVision = capture.useVision ?? false
@@ -255,7 +265,7 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     const playbookContext = buildPlaybookContext(activePlaybooks)
 
     let coachInstantReply: string | undefined
-    const userMessage = args.coachMode
+    let coachUserMessage = args.coachMode
       ? (() => {
           if (args.activeTabMode) {
             const coachReq = resolveCoachRequest(screenText, assistantMode, screenMetadata)
@@ -272,10 +282,21 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
           userQuery: args.query
         })
 
-    const journalEnabled = getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
-    const journalContext = journalEnabled ? getRecentJournalContext(30) : ''
+    if (args.coachMode && assistantMode === 'work' && !coachInstantReply) {
+      const thread = getWorkCoachThread(screenText, screenMetadata)
+      coachUserMessage = appendWorkCoachContext(coachUserMessage, thread)
+    }
 
-    const contextParts = [playbookContext, journalContext, userMessage].filter(Boolean)
+    const userMessage = coachUserMessage
+
+    const journalEnabled = getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
+    // Coach = screen-only; journal/playbooks caused HOI4/mod noise on unrelated tabs (e.g. YouTube)
+    const journalContext =
+      args.coachMode ? '' : journalEnabled ? getRecentJournalContext(30) : ''
+
+    const contextParts = args.coachMode
+      ? [userMessage]
+      : [playbookContext, journalContext, userMessage].filter(Boolean)
     const fullUserMessage = contextParts.join('\n\n')
 
     // Build messages array: system prompt + conversation history + new user message
@@ -316,6 +337,9 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
         }
       },
       onDone: () => {
+        if (args.coachMode && assistantMode === 'work' && completionContent.trim()) {
+          updateWorkCoachThread(screenText, screenMetadata, completionContent)
+        }
         if (!event.sender.isDestroyed()) {
           const completionTokens = estimateTokens(completionContent)
           const totalTokens = promptTokens + completionTokens
@@ -494,6 +518,18 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     }
     if (key === 'activityJournal' || key === 'journalIntervalSec' || key === 'journalSmartCrop' || key === 'fullAutoMode') {
       syncActivityJournal()
+      syncHourlyReportLoop()
+    }
+    if (key === 'hourlyReportEnabled' || key === 'hourlyReportIntervalSec') {
+      syncHourlyReportLoop()
+    }
+    if (
+      key === 'gameModeEnabled' ||
+      key === 'gameCaptureIntervalSec' ||
+      key === 'gameBlockSec' ||
+      key === 'gameHourlyAiSec'
+    ) {
+      syncGameCaptureLoop()
     }
     // Re-register hotkeys when hotkey settings change
     if (key === 'hotkeys') {
@@ -503,6 +539,16 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_ALL, () => {
     return getAllSettings()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DISPLAYS_LIST, () => {
+    const primaryId = screen.getPrimaryDisplay().id
+    return screen.getAllDisplays().map((d) => ({
+      id: d.id,
+      label: d.label || `Display ${d.id}`,
+      bounds: d.bounds,
+      isPrimary: d.id === primaryId
+    }))
   })
 
   // Models
@@ -571,6 +617,14 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     clearJournal()
   })
 
+  ipcMain.on(IPC_CHANNELS.OVERLAY_EXPAND, () => {
+    expandOverlayWindow(true)
+  })
+
+  ipcMain.on(IPC_CHANNELS.OVERLAY_COLLAPSE, () => {
+    showOverlayPill()
+  })
+
   // Shell — open URLs in external browser (validated in preload)
   ipcMain.on('shell:open-external', (_event, url: unknown) => {
     if (typeof url !== 'string') return
@@ -588,4 +642,6 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   syncAutoCapture()
   syncContinuousCoach(overlayWindow)
   syncActivityJournal()
+  syncHourlyReportLoop()
+  syncGameCaptureLoop()
 }

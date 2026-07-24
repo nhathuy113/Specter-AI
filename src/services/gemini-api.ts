@@ -116,6 +116,51 @@ export function cancelGeminiStream(): void {
   }
 }
 
+/** Non-streaming multimodal completion — up to ~12 images for game hourly reports. */
+export async function completeGeminiVisionMulti(
+  messages: GeminiMessage[],
+  model: string,
+  apiKey: string,
+  images: Array<{ base64: string; mime: 'image/png' | 'image/jpeg' | 'image/webp' }>,
+  maxTokens = 1200
+): Promise<string> {
+  const client = new OpenAI({
+    apiKey,
+    baseURL: GEMINI_BASE_URL
+  })
+
+  const copy = [...messages]
+  const lastUserIndex = [...copy].reverse().findIndex((m) => m.role === 'user')
+  if (lastUserIndex < 0) {
+    copy.push({ role: 'user', content: 'Summarize the attached screenshots.' })
+  }
+
+  const index = copy.length - 1 - Math.max(0, lastUserIndex)
+  const lastUser = copy[index]
+  const textPart =
+    typeof lastUser.content === 'string' ? lastUser.content : 'Summarize the attached screenshots.'
+
+  copy[index] = {
+    role: 'user',
+    content: [
+      { type: 'text', text: textPart },
+      ...images.map((img) => ({
+        type: 'image_url' as const,
+        image_url: { url: `data:${img.mime};base64,${img.base64}` }
+      }))
+    ]
+  }
+
+  const response = await client.chat.completions.create({
+    model,
+    messages: copy,
+    max_tokens: maxTokens,
+    stream: false
+  })
+
+  return response.choices[0]?.message?.content?.trim() || ''
+}
+
 export interface GeminiKeyValidation {
   valid: boolean
   error?: string

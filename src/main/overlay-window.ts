@@ -8,16 +8,21 @@
 //            a BLACK RECTANGLE on transparent/layered windows.
 //   Linux:   No reliable screen-capture exclusion API exists.
 
-import { app, BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, screen, shell, type Rectangle } from 'electron'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import { getSetting, setSetting } from '../services/store'
 import { OVERLAY_DEFAULTS } from '../shared/constants'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
+import { restoreMacOSForegroundApp } from './macos-front-window'
+import { defaultExpandedOverlayBounds, defaultPillOverlayBounds, getOverlayTargetDisplay, isPillSizedBounds } from '../services/overlay-placement'
 
 let overlayWindow: BrowserWindow | null = null
 let backgroundWatchMode = false
+let cachedExpandedBounds: Rectangle | null = null
+
+const PILL = { width: 250, height: 56, margin: 16 }
 
 /**
  * Apply screen-capture protection via native FFI (Windows only).
@@ -29,14 +34,49 @@ function applyCaptureProtection(win: BrowserWindow): void {
 
   const applied = applyExcludeFromCapture(win)
   if (applied) {
-    // Verify the flag stuck
     verifyDisplayAffinity(win)
   }
 }
 
+function isPillBounds(bounds: Rectangle): boolean {
+  return isPillSizedBounds(bounds)
+}
+
+function resolveExpandedBounds(): Rectangle {
+  if (cachedExpandedBounds && !isPillBounds(cachedExpandedBounds)) {
+    return cachedExpandedBounds
+  }
+
+  const savedPosition = getSetting<{ x: number; y: number }>('overlayPosition')
+  const savedSize = getSetting<{ width: number; height: number }>('overlaySize')
+  const winWidth = savedSize?.width || OVERLAY_DEFAULTS.width
+  const winHeight = savedSize?.height || OVERLAY_DEFAULTS.height
+
+  if (savedPosition != null && savedPosition.x >= 0 && savedPosition.y >= 0) {
+    return { x: savedPosition.x, y: savedPosition.y, width: winWidth, height: winHeight }
+  }
+
+  return defaultExpandedOverlayBounds(winWidth, winHeight)
+}
+
+function getPillBounds(): Rectangle {
+  return defaultPillOverlayBounds(PILL.width, PILL.height, PILL.margin)
+}
+
+function cacheExpandedBounds(win: BrowserWindow): void {
+  const bounds = win.getBounds()
+  if (isPillBounds(bounds)) return
+  cachedExpandedBounds = bounds
+  setSetting('overlayPosition', { x: bounds.x, y: bounds.y })
+  setSetting('overlaySize', { width: bounds.width, height: bounds.height })
+}
+
+function restoreExpandedBounds(win: BrowserWindow): void {
+  win.setBounds(resolveExpandedBounds())
+}
+
 function showProtectedOverlay(win: BrowserWindow, focus = false, force = false): void {
   if (win.isDestroyed()) return
-  // Background watch/journal: never auto-show overlay (capture cycles must stay invisible)
   if (backgroundWatchMode && !force) return
 
   applyCaptureProtection(win)
@@ -45,12 +85,11 @@ function showProtectedOverlay(win: BrowserWindow, focus = false, force = false):
     win.show()
     win.focus()
   } else {
-    // showInactive — do not steal keyboard focus from the user's active app
     win.showInactive()
   }
 }
 
-/** Keep overlay hidden while Watch / journal / full-auto runs in the background. */
+/** Keep pill visible while Watch / journal / full-auto runs in the background. */
 export function syncOverlayBackgroundMode(): void {
   const fullAuto = getSetting<boolean>('fullAutoMode')
   const watch = getSetting<boolean>('continuousCoach')
@@ -59,102 +98,80 @@ export function syncOverlayBackgroundMode(): void {
 }
 
 export function createOverlayWindow(): BrowserWindow {
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
-
-  const savedPosition = getSetting<{ x: number; y: number }>('overlayPosition')
-  const savedSize = getSetting<{ width: number; height: number }>('overlaySize')
-
-  const winWidth = savedSize?.width || OVERLAY_DEFAULTS.width
-  const winHeight = savedSize?.height || OVERLAY_DEFAULTS.height
-  const x = (savedPosition != null && savedPosition.x >= 0) ? savedPosition.x : screenWidth - winWidth - OVERLAY_DEFAULTS.margin
-  const y = (savedPosition != null && savedPosition.y >= 0) ? savedPosition.y : OVERLAY_DEFAULTS.margin
+  const initialBounds = resolveExpandedBounds()
 
   overlayWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    x,
-    y,
-    show: false, // Hidden until user opens via hotkey/tray — avoids focus steal on startup
+    width: initialBounds.width,
+    height: initialBounds.height,
+    x: initialBounds.x,
+    y: initialBounds.y,
+    show: false,
     transparent: true,
     frame: false,
-    movable: true,          // Explicitly allow dragging
+    movable: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
-    focusable: true,   // Must be true for keyboard input on Windows
-    hasShadow: false,   // Critical: no OS-level window shadow (leaks through capture)
-    thickFrame: false,  // Windows: disable thick frame shadow/border
-    // NOTE: Do NOT set 'opacity' here — it creates WS_EX_LAYERED + LWA_ALPHA on Windows
-    // which breaks SetWindowDisplayAffinity (screen-capture exclusion). Opacity is
-    // handled via CSS in the renderer instead.
-    // macOS: 'panel' type is excluded from screen capture
+    focusable: true,
+    hasShadow: false,
+    thickFrame: false,
     ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
       preload: path.join(__dirname, '../preload/index.js'),
-      sandbox: false // Required: @electron-toolkit/preload uses Node APIs in preload
+      sandbox: false
     }
   })
 
-  // macOS: set window level above screen saver, excluded from capture
   if (process.platform === 'darwin') {
     overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1)
     overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   } else {
-    // Windows/Linux: set always-on-top at screen-saver level
     overlayWindow.setAlwaysOnTop(true, 'screen-saver')
   }
 
-  // Windows: exclude from screen capture
   applyCaptureProtection(overlayWindow)
   overlayWindow.on('show', () => {
     if (overlayWindow) applyCaptureProtection(overlayWindow)
   })
 
-  // When the overlay renderer is ready, send the initial opacity value
   overlayWindow.webContents.on('did-finish-load', () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       const opacity = getSetting<number>('overlayOpacity') || OVERLAY_DEFAULTS.opacity
       overlayWindow.webContents.send(IPC_CHANNELS.OVERLAY_SET_OPACITY, opacity)
+      syncOverlayBackgroundMode()
     }
   })
 
-  // Save position on move
   overlayWindow.on('moved', () => {
-    if (overlayWindow) {
-      const [px, py] = overlayWindow.getPosition()
-      setSetting('overlayPosition', { x: px, y: py })
-    }
+    if (!overlayWindow) return
+    const bounds = overlayWindow.getBounds()
+    if (isPillBounds(bounds)) return
+    setSetting('overlayPosition', { x: bounds.x, y: bounds.y })
+    cachedExpandedBounds = bounds
   })
 
-  // Save size on resize
   overlayWindow.on('resize', () => {
-    if (overlayWindow) {
-      const [w, h] = overlayWindow.getSize()
-      setSetting('overlaySize', { width: w, height: h })
-    }
+    if (!overlayWindow) return
+    const bounds = overlayWindow.getBounds()
+    if (isPillBounds(bounds)) return
+    setSetting('overlaySize', { width: bounds.width, height: bounds.height })
+    cachedExpandedBounds = bounds
   })
 
   overlayWindow.on('closed', () => {
     overlayWindow = null
   })
 
-  // NOTE: Click-through for transparent regions is handled natively by Electron
-  // when transparent: true + frame: false is set. No setIgnoreMouseEvents needed.
-  // Using setIgnoreMouseEvents was actively breaking -webkit-app-region: drag.
-
-  // Load the overlay renderer
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     overlayWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/overlay/index.html`)
   } else {
     overlayWindow.loadFile(path.join(__dirname, '../renderer/overlay/index.html'))
   }
 
-  // --- Security: block all navigation and new windows ---
   overlayWindow.webContents.on('will-navigate', (event, url) => {
-    // In dev, allow HMR reloads to the dev server
     if (is.dev && process.env['ELECTRON_RENDERER_URL'] && url.startsWith(process.env['ELECTRON_RENDERER_URL'])) {
       return
     }
@@ -163,7 +180,6 @@ export function createOverlayWindow(): BrowserWindow {
   })
 
   overlayWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Open external links in the user's default browser, not in the app
     if (url.startsWith('https://')) {
       shell.openExternal(url).catch(() => {})
     }
@@ -173,32 +189,64 @@ export function createOverlayWindow(): BrowserWindow {
   return overlayWindow
 }
 
-function applyOverlayInteractiveState(win: BrowserWindow, interactive: boolean): void {
+function sendOverlayPillMode(win: BrowserWindow, minimized: boolean): void {
   if (win.isDestroyed()) return
-  if (interactive) {
-    win.setFocusable(true)
-    if (process.platform === 'darwin') {
-      win.setAlwaysOnTop(true, 'screen-saver', 1)
-    } else {
-      win.setAlwaysOnTop(true, 'screen-saver')
-    }
+  win.webContents.send(IPC_CHANNELS.OVERLAY_SET_PILL_MODE, { minimized })
+}
+
+/** Compact pill docked bottom-right of primary display (MacBook). */
+export function showOverlayPill(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+
+  cacheExpandedBounds(overlayWindow)
+  const pillBounds = getPillBounds()
+  overlayWindow.setBounds(pillBounds)
+  overlayWindow.setFocusable(false)
+  if (process.platform === 'darwin') {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1)
   } else {
-    // Fully demote — hidden panel + alwaysOnTop can still block clicks/focus on macOS
-    win.hide()
-    win.setFocusable(false)
-    win.setAlwaysOnTop(false)
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  }
+  sendOverlayPillMode(overlayWindow, true)
+  overlayWindow.showInactive()
+  console.info(`[Specter] Overlay pill @ (${pillBounds.x},${pillBounds.y}) ${pillBounds.width}x${pillBounds.height} on ${getOverlayTargetDisplay().label || 'display'}`)
+}
+
+export function expandOverlayWindow(focus = true): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+
+  cachedExpandedBounds = null
+  restoreExpandedBounds(overlayWindow)
+  const bounds = overlayWindow.getBounds()
+  overlayWindow.setFocusable(true)
+  if (process.platform === 'darwin') {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1)
+  } else {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  }
+  sendOverlayPillMode(overlayWindow, false)
+  console.info(`[Specter] Overlay expanded @ (${bounds.x},${bounds.y}) ${bounds.width}x${bounds.height} on ${getOverlayTargetDisplay().label || 'display'}`)
+  if (focus) {
+    overlayWindow.show()
+    overlayWindow.focus()
+  } else {
+    overlayWindow.showInactive()
   }
 }
 
-/** macOS: run as tray/accessory app so screen capture does not front Specter. */
+function applyOverlayInteractiveState(win: BrowserWindow, interactive: boolean): void {
+  if (win.isDestroyed()) return
+  if (interactive) {
+    expandOverlayWindow(false)
+  } else {
+    showOverlayPill()
+  }
+}
+
+/** Focus steal is handled via showInactive(); keep regular activation so the panel stays visible. */
 export function syncMacAppActivationPolicy(): void {
   if (process.platform !== 'darwin') return
-  if (backgroundWatchMode) {
-    app.setActivationPolicy('accessory')
-    app.dock?.hide()
-  } else {
-    app.setActivationPolicy('regular')
-  }
+  app.setActivationPolicy('regular')
 }
 
 export function setOverlayBackgroundWatch(enabled: boolean): void {
@@ -215,15 +263,18 @@ export function isOverlayBackgroundWatch(): boolean {
 
 export function toggleOverlay(): void {
   if (!overlayWindow) return
-  if (overlayWindow.isVisible()) {
+  if (overlayWindow.isVisible() && !isPillBounds(overlayWindow.getBounds())) {
     overlayWindow.hide()
     syncOverlayBackgroundMode()
-  } else {
-    backgroundWatchMode = false
-    applyOverlayInteractiveState(overlayWindow, true)
-    syncMacAppActivationPolicy()
-    showProtectedOverlay(overlayWindow, true, true)
+    return
   }
+  if (overlayWindow.isVisible() && isPillBounds(overlayWindow.getBounds())) {
+    overlayWindow.hide()
+    return
+  }
+
+  backgroundWatchMode = false
+  expandOverlayWindow(true)
 }
 
 export function getOverlayWindow(): BrowserWindow | null {
@@ -235,29 +286,27 @@ export function showOverlay(options?: { focus?: boolean; force?: boolean }): voi
   const force = options?.force ?? false
   if (force) {
     backgroundWatchMode = false
-    applyOverlayInteractiveState(overlayWindow, true)
     syncMacAppActivationPolicy()
+    expandOverlayWindow(options?.focus ?? true)
+    return
   }
   showProtectedOverlay(overlayWindow, options?.focus ?? false, force)
 }
 
 export function hideOverlay(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
+  if (backgroundWatchMode) {
+    showOverlayPill()
+    return
+  }
   overlayWindow.hide()
-  syncOverlayBackgroundMode()
 }
 
-/** After background capture — give focus back to whatever the user was using. */
 export function releaseForegroundAfterBackgroundWork(): void {
   if (!backgroundWatchMode || process.platform !== 'darwin') return
-  app.hide()
+  restoreMacOSForegroundApp()
 }
 
-/**
- * Update overlay opacity via CSS in the renderer (NOT native window opacity).
- * Using native win.setOpacity() would add WS_EX_LAYERED + LWA_ALPHA which
- * breaks screen-capture exclusion on Windows.
- */
 export function setOverlayOpacity(opacity: number): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   const clamped = Math.max(0.3, Math.min(1.0, opacity))

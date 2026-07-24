@@ -5,7 +5,7 @@ import { captureAccessibilityText } from '../services/accessibility-capture'
 import { appendJournalFromCapture } from '../services/activity-journal-capture'
 import { appendJournalSnapshot } from '../services/activity-journal'
 import { extractScreenContext } from '../services/context-router'
-import { fingerprintScreenText } from '../services/fingerprint'
+import { fingerprintJournalFocus } from '../services/fingerprint'
 import { getSetting } from '../services/store'
 import { captureScreenText } from './screen-capture'
 import { syncOverlayBackgroundMode } from './overlay-window'
@@ -42,7 +42,7 @@ export async function recordActivityJournalTick(): Promise<void> {
     windowTitle: ax.windowTitle,
     screenKind: ctx.kind,
     snippet: ctx.focusedText.slice(0, 300),
-    fingerprint: fingerprintScreenText(`${ax.appName}|${ax.windowTitle}|${ctx.focusedText.slice(0, 500)}`),
+    fingerprint: fingerprintJournalFocus(ax.appName, ax.windowTitle, ctx.kind),
     durationSec: 60,
     textSource: 'accessibility'
   })

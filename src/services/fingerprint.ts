@@ -32,3 +32,13 @@ export function fingerprintCoachScreenText(rawText: string): string {
   }
   return fingerprintScreenText(rawText)
 }
+
+/** Stable session key for journal dedup — ignores volatile OCR (clock, cursor, etc.). */
+export function fingerprintJournalFocus(
+  appName: string,
+  windowTitle: string,
+  screenKind: string
+): string {
+  const key = `${appName}|${windowTitle}|${screenKind}`.toLowerCase().trim()
+  return createHash('sha256').update(key).digest('hex').slice(0, 16)
+}

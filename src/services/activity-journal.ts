@@ -36,19 +36,16 @@ export interface JournalSnapshotInput {
   capturePlan?: 'window-crop' | 'display-full'
 }
 
-/** Merge into same minute + fingerprint bucket, or append. */
+/** Merge consecutive same focus session (incl. idle/away), or append new row. */
 export function appendJournalSnapshot(input: JournalSnapshotInput): ActivityJournalEntry {
   const timestamp = input.timestamp ?? Date.now()
   const minuteKey = minuteKeyFromDate(new Date(timestamp))
   const entries = getJournalEntries()
   const last = entries[entries.length - 1]
+  const bumpSec = input.durationSec ?? 60
 
-  if (
-    last &&
-    last.minuteKey === minuteKey &&
-    last.fingerprint === input.fingerprint
-  ) {
-    last.durationSec += input.durationSec ?? 60
+  if (last && last.fingerprint === input.fingerprint) {
+    last.durationSec += bumpSec
     last.timestamp = timestamp
     if (input.snippet && input.snippet.length > last.snippet.length) {
       last.snippet = input.snippet.slice(0, 400)

@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --specter-glass-strength: 1;
+}
+
 /* ── Theme system ── */
 /* Default: dark theme */
 :root,
@@ -51,21 +55,21 @@
   --specter-violet: #7C3AED;
   --specter-bg: transparent;
   --specter-bg-deeper: transparent;
-  --specter-surface: rgba(10, 10, 15, 0.50);
-  --specter-surface-hover: rgba(255, 255, 255, 0.06);
-  --specter-border: rgba(255, 255, 255, 0.12);
-  --specter-text: rgba(255, 255, 255, 0.95);
-  --specter-text-secondary: rgba(255, 255, 255, 0.65);
-  --specter-text-muted: rgba(255, 255, 255, 0.35);
-  --specter-input-bg: rgba(255, 255, 255, 0.06);
-  --specter-scroll-thumb: rgba(255, 255, 255, 0.12);
-  --specter-scroll-thumb-hover: rgba(255, 255, 255, 0.22);
-  --specter-user-bubble: rgba(124, 58, 237, 0.20);
-  --specter-assistant-bubble: rgba(255, 255, 255, 0.06);
-  --specter-code-bg: rgba(0, 0, 0, 0.40);
-  --specter-sidebar-bg: rgba(10, 10, 15, 0.60);
-  --specter-content-bg: rgba(15, 15, 22, 0.65);
-  --specter-backdrop-blur: blur(40px) saturate(200%);
+  --specter-surface: rgba(255, 255, 255, 0.10);
+  --specter-surface-hover: rgba(255, 255, 255, 0.08);
+  --specter-border: rgba(255, 255, 255, 0.22);
+  --specter-text: rgba(255, 255, 255, 0.96);
+  --specter-text-secondary: rgba(255, 255, 255, 0.72);
+  --specter-text-muted: rgba(255, 255, 255, 0.42);
+  --specter-input-bg: rgba(255, 255, 255, 0.10);
+  --specter-scroll-thumb: rgba(255, 255, 255, 0.16);
+  --specter-scroll-thumb-hover: rgba(255, 255, 255, 0.28);
+  --specter-user-bubble: rgba(124, 58, 237, 0.28);
+  --specter-assistant-bubble: rgba(255, 255, 255, 0.08);
+  --specter-code-bg: rgba(0, 0, 0, 0.35);
+  --specter-sidebar-bg: rgba(255, 255, 255, 0.08);
+  --specter-content-bg: rgba(255, 255, 255, 0.06);
+  --specter-backdrop-blur: blur(48px) saturate(200%);
 }
 
 /* Scrollbar styling */
@@ -90,6 +94,64 @@
 
 .glass-light {
   background: var(--specter-surface-hover);
+}
+
+/* Overlay panel — readable first; subtle frost at edges only */
+.specter-overlay-panel {
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  background: rgba(12, 12, 18, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-top-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+}
+
+.specter-overlay-chrome {
+  background: rgba(16, 16, 24, 0.98);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.specter-overlay-messages {
+  background: rgba(8, 8, 14, 0.98);
+}
+
+.specter-overlay-input {
+  background: rgba(16, 16, 24, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .specter-overlay-panel {
+  background: rgba(252, 252, 254, 0.96);
+  border-color: rgba(0, 0, 0, 0.10);
+}
+
+[data-theme="light"] .specter-overlay-messages {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+[data-theme="light"] .specter-overlay-chrome,
+[data-theme="light"] .specter-overlay-input {
+  background: rgba(248, 248, 252, 0.98);
+}
+
+[data-theme="glass"] .specter-overlay-panel,
+[data-theme="dark"] .specter-overlay-panel {
+  background: rgba(12, 12, 18, 0.94);
+}
+
+.specter-pill-glass {
+  backdrop-filter: blur(36px) saturate(190%);
+  -webkit-backdrop-filter: blur(36px) saturate(190%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, calc(0.42 * var(--specter-glass-strength, 0.95))) 0%,
+    rgba(55, 48, 80, calc(0.88 * var(--specter-glass-strength, 0.95))) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, calc(0.50 * var(--specter-glass-strength, 0.95)));
+  border-top-color: rgba(255, 255, 255, calc(0.70 * var(--specter-glass-strength, 0.95)));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, calc(0.35 * var(--specter-glass-strength, 0.95))),
+    0 4px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* Animations */

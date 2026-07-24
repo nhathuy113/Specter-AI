@@ -53,6 +53,7 @@ export function bootstrapSettingsFromEnv(): void {
     setSetting('activityJournal', true)
     setSetting('smartCrop', true)
     setSetting('journalSmartCrop', true)
-    console.info('[Specter] FULL_AUTO_MODE enabled — Watch + smart-crop journal')
+    setSetting('gameModeEnabled', true)
+    console.info('[Specter] FULL_AUTO_MODE enabled — journal + Game Mode')
   }
 }

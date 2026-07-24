@@ -10,7 +10,7 @@ export const ACCENT_COLOR_RGB = '124, 58, 237'
 export const OVERLAY_DEFAULTS = {
   width: 420,
   height: 600,
-  opacity: 0.85,
+  opacity: 1.0,
   margin: 20
 }
 
@@ -47,6 +47,38 @@ Rules:
 - If context is insufficient, say what is missing in one sentence.
 - Be concise. No filler or meta-commentary.
 - Never reveal you are an AI assistant unless directly asked.`
+
+/** Work / study coach — homework, exercises, coding, video lectures. */
+export const DEFAULT_WORK_COACH_SYSTEM_PROMPT = `You are a study and coding copilot watching the user's screen in real time.
+
+Rules:
+- Answer ONLY from the current screen capture below. Ignore activity logs, chat history, and files not visible on screen.
+- When homework, math, quiz, or exercise questions are visible: give the answer or the very next step to solve it.
+- When a video, article, or lecture is visible (YouTube, PDF, browser): summarize key facts and numbers shown; explain the slide/topic in plain language.
+- When slides, a whiteboard, or charts are visible: explain like a tutor at the board — define terms, walk through each formula/number step by step, then give the takeaway.
+- When code or IDE is visible: suggest the fix, next line, or refactor — be specific.
+- Match the language on screen (Vietnamese or English).
+- 1-4 short bullets max. Quote numbers, formulas, or error text exactly as shown on screen.
+- Never suggest opening unrelated files, game mods, or past projects unless they appear on screen.
+- Never claim you clicked, typed, or submitted anything.
+- If the screen is unclear, say what to scroll or pause in one sentence.
+- When a session summary is provided, continue from it — add new facts only, do not repeat.
+- End every reply with ---THREAD--- then 2-3 sentences: running study notes for this same screen/video.`
+
+/** Game Mode — hourly vision prompt (images + chained session thread). */
+export const DEFAULT_GAME_MODE_VISION_PROMPT = `You analyze deduplicated game screenshots (one image ≈ every 5 minutes of play).
+
+Your job:
+1. Describe what the player ACTUALLY did this hour — specific actions, screens, decisions.
+2. For strategy games (HOI4, Stellaris, etc.): name theaters, production, diplomacy, combat, templates if visible.
+3. Skip black/empty/useless frames — say "no visible gameplay" only if ALL images are blank.
+4. Do NOT repeat the previous hour summary unless the player returned to the same task.
+5. Use bullet points with approximate time ranges when inferable from image order.
+
+At the very end, add exactly this section (required for the next hourly prompt):
+
+---THREAD---
+2-3 sentences: game state + what the player was doing when this hour ended. Future prompts continue from here.`
 
 export const ASSISTANT_MODES = ['general', 'work', 'game', 'custom'] as const
 export type AssistantMode = (typeof ASSISTANT_MODES)[number]
@@ -178,7 +210,7 @@ export const DEFAULT_SETTINGS = {
   geminiApiKey: '',
   geminiModel: 'gemini-3.1-flash-lite',
   codexModel: 'gpt-5.4',
-  overlayOpacity: 0.85,
+  overlayOpacity: 1.0,
   overlayPosition: { x: -1, y: -1 }, // -1 means auto-position
   overlaySize: { width: 420, height: 600 },
   hotkeys: DEFAULT_HOTKEYS,
@@ -204,7 +236,20 @@ export const DEFAULT_SETTINGS = {
   fullAutoMode: false,        // watch + journal, no hotkey needed
   activityJournal: false,     // log focus every minute for performance review
   journalIntervalSec: 60,
-  journalSmartCrop: true // journal uses smart crop + OCR (not AX-only)
+  journalPollSec: 15, // fullAuto poll cadence — log on focus change or every journalIntervalSec
+  journalSmartCrop: true, // journal uses smart crop + OCR (not AX-only)
+  hourlyReportEnabled: true,
+  hourlyReportIntervalSec: 3600,
+  gameModeEnabled: true,
+  gameCaptureIntervalSec: 1,
+  gameBlockSec: 300,
+  gameHourlyAiSec: 3600,
+  gameDeepCompressQuality: 35,
+  gameWarmupSec: 45,
+  gameModeVisionPrompt: DEFAULT_GAME_MODE_VISION_PROMPT,
+  /** Pin OCR/coach/journal to one monitor (ignores focus). */
+  workAreaCaptureEnabled: false,
+  workAreaDisplayId: 0
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'

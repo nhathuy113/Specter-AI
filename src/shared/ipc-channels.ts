@@ -6,6 +6,9 @@ export const IPC_CHANNELS = {
   HIDE_OVERLAY: 'overlay:hide',
   OVERLAY_READY: 'overlay:ready',
   OVERLAY_SET_OPACITY: 'overlay:set-opacity',
+  OVERLAY_SET_PILL_MODE: 'overlay:set-pill-mode',
+  OVERLAY_EXPAND: 'overlay:expand',
+  OVERLAY_COLLAPSE: 'overlay:collapse',
 
   // AI
   AI_CHECK_CONFIG: 'ai:check-config',
@@ -28,6 +31,9 @@ export const IPC_CHANNELS = {
   AUDIO_TRANSCRIPT: 'audio:transcript',
   AUDIO_STATUS: 'audio:status',
 
+  // Displays
+  DISPLAYS_LIST: 'displays:list',
+
   // Settings
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -43,6 +49,7 @@ export const IPC_CHANNELS = {
   HOTKEY_TOGGLE_AUDIO: 'hotkey:toggle-audio',
   HOTKEY_TOGGLE_OVERLAY: 'hotkey:toggle-overlay',
   HOTKEY_ACTIVE_TAB: 'hotkey:active-tab',
+  WORK_AUTO_TOGGLED: 'work-auto:toggled',
   HOTKEY_REREGISTER: 'hotkey:reregister',
 
   // Dashboard

@@ -1,4 +1,4 @@
-import { DEFAULT_COACH_SYSTEM_PROMPT } from '../shared/constants'
+import { DEFAULT_COACH_SYSTEM_PROMPT, DEFAULT_WORK_COACH_SYSTEM_PROMPT } from '../shared/constants'
 import type { AssistantMode, ScreenMetadata } from '../shared/types'
 import { resolveAssistantRequest, type ScreenKind } from './context-router'
 
@@ -6,7 +6,9 @@ export function buildCoachSystemPrompt(customPrompt?: string, mode?: AssistantMo
   if (mode === 'custom' && customPrompt?.trim()) {
     return customPrompt.trim()
   }
-  return customPrompt?.trim() || DEFAULT_COACH_SYSTEM_PROMPT
+  if (customPrompt?.trim()) return customPrompt.trim()
+  if (mode === 'work') return DEFAULT_WORK_COACH_SYSTEM_PROMPT
+  return DEFAULT_COACH_SYSTEM_PROMPT
 }
 
 export interface CoachRequest {
@@ -34,9 +36,12 @@ export function buildActiveTabUserMessage(
   return [
     req.userMessage,
     '',
-    '[TASK — ACTIVE TAB]',
-    'Summarize what the user is doing in the active tab/window in one line.',
-    'Then recommend the single best next step. Be specific to visible UI text.'
+    '[TASK — GIẢI THÍCH BÀI TRÊN MÀN HÌNH]',
+    'Giải thích như giáo viên đang dạy trên bảng/slide/video:',
+    '1) Chủ đề là gì (1 câu)',
+    '2) Giải thích từng ý, công thức, biểu đồ, số liệu nhìn thấy — từng bước',
+    '3) Kết luận ngắn / ý cần nhớ',
+    'Chỉ dùng nội dung trên màn hình. Không gợi ý file hay app khác.'
   ].join('\n')
 }
 
