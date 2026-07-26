@@ -17,10 +17,12 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
 import { restoreMacOSForegroundApp } from './macos-front-window'
 import { defaultExpandedOverlayBounds, defaultPillOverlayBounds, getOverlayTargetDisplay, isPillSizedBounds } from '../services/overlay-placement'
+import { resolveOverlayFitBounds, type OverlayFitRequest } from '../services/overlay-fit'
 
 let overlayWindow: BrowserWindow | null = null
 let backgroundWatchMode = false
 let cachedExpandedBounds: Rectangle | null = null
+let suppressResizePersist = false
 
 const PILL = { width: 250, height: 56, margin: 16 }
 
@@ -63,6 +65,14 @@ function getPillBounds(): Rectangle {
   return defaultPillOverlayBounds(PILL.width, PILL.height, PILL.margin)
 }
 
+function setBoundsQuiet(win: BrowserWindow, bounds: Rectangle): void {
+  suppressResizePersist = true
+  win.setBounds(bounds)
+  setTimeout(() => {
+    suppressResizePersist = false
+  }, 120)
+}
+
 function cacheExpandedBounds(win: BrowserWindow): void {
   const bounds = win.getBounds()
   if (isPillBounds(bounds)) return
@@ -97,8 +107,15 @@ export function syncOverlayBackgroundMode(): void {
   setOverlayBackgroundWatch(!!(fullAuto || watch || journal))
 }
 
+function applyMacNativeGlass(win: BrowserWindow): void {
+  if (process.platform !== 'darwin' || win.isDestroyed()) return
+  // Blur desktop behind window — NSVisualEffectView (not CSS backdrop-filter).
+  win.setVibrancy('under-window')
+}
+
 export function createOverlayWindow(): BrowserWindow {
   const initialBounds = resolveExpandedBounds()
+  const isMac = process.platform === 'darwin'
 
   overlayWindow = new BrowserWindow({
     width: initialBounds.width,
@@ -107,6 +124,7 @@ export function createOverlayWindow(): BrowserWindow {
     y: initialBounds.y,
     show: false,
     transparent: true,
+    backgroundColor: '#00000000',
     frame: false,
     movable: true,
     alwaysOnTop: true,
@@ -115,7 +133,13 @@ export function createOverlayWindow(): BrowserWindow {
     focusable: true,
     hasShadow: false,
     thickFrame: false,
-    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
+    ...(isMac
+      ? {
+          type: 'panel',
+          vibrancy: 'under-window',
+          visualEffectState: 'active'
+        }
+      : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -128,6 +152,7 @@ export function createOverlayWindow(): BrowserWindow {
   if (process.platform === 'darwin') {
     overlayWindow.setAlwaysOnTop(true, 'screen-saver', 1)
     overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    applyMacNativeGlass(overlayWindow)
   } else {
     overlayWindow.setAlwaysOnTop(true, 'screen-saver')
   }
@@ -141,6 +166,9 @@ export function createOverlayWindow(): BrowserWindow {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       const opacity = getSetting<number>('overlayOpacity') || OVERLAY_DEFAULTS.opacity
       overlayWindow.webContents.send(IPC_CHANNELS.OVERLAY_SET_OPACITY, opacity)
+      overlayWindow.webContents.send(IPC_CHANNELS.OVERLAY_SET_GLASS_MODE, {
+        native: process.platform === 'darwin'
+      })
       syncOverlayBackgroundMode()
     }
   })
@@ -154,7 +182,7 @@ export function createOverlayWindow(): BrowserWindow {
   })
 
   overlayWindow.on('resize', () => {
-    if (!overlayWindow) return
+    if (!overlayWindow || suppressResizePersist) return
     const bounds = overlayWindow.getBounds()
     if (isPillBounds(bounds)) return
     setSetting('overlaySize', { width: bounds.width, height: bounds.height })
@@ -234,12 +262,33 @@ export function expandOverlayWindow(focus = true): void {
   }
 }
 
-function applyOverlayInteractiveState(win: BrowserWindow, interactive: boolean): void {
+function applyOverlayBackgroundLayout(win: BrowserWindow, watchEnabled: boolean): void {
   if (win.isDestroyed()) return
-  if (interactive) {
-    expandOverlayWindow(false)
-  } else {
-    showOverlayPill()
+
+  const bounds = win.getBounds()
+  const expanded = win.isVisible() && !isPillBounds(bounds)
+
+  if (watchEnabled) {
+    if (!win.isVisible()) {
+      showOverlayPill()
+      return
+    }
+    if (isPillBounds(bounds)) {
+      win.setFocusable(false)
+      win.showInactive()
+      return
+    }
+    // Expanded overlay stays expanded when auto/watch toggles on
+    win.setFocusable(false)
+    sendOverlayPillMode(win, false)
+    win.showInactive()
+    return
+  }
+
+  // Watch off — preserve current layout; only restore focusability when expanded
+  if (expanded || !isPillBounds(bounds)) {
+    win.setFocusable(true)
+    sendOverlayPillMode(win, false)
   }
 }
 
@@ -249,10 +298,65 @@ export function syncMacAppActivationPolicy(): void {
   app.setActivationPolicy('regular')
 }
 
+/** True when the expanded overlay panel is visible (not pill, not fully hidden). */
+export function isOverlayExpandedForCoach(): boolean {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return false
+  if (!overlayWindow.isVisible()) return false
+  return !isPillBounds(overlayWindow.getBounds())
+}
+
+export function isOverlayFullyHidden(): boolean {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return true
+  return !overlayWindow.isVisible()
+}
+
+/** Pill visible — work journal only, no coach AI. */
+export function isOverlayPillMode(): boolean {
+  if (isOverlayFullyHidden()) return false
+  return isPillBounds(overlayWindow!.getBounds())
+}
+
+/** Coach auto + COACH_DEBUG only when expanded panel is open. */
+export function shouldRunCoachAutoUi(): boolean {
+  return isOverlayExpandedForCoach()
+}
+
+/** Activity journal while pill (background work log). */
+export function shouldRunWorkJournal(): boolean {
+  return isOverlayPillMode()
+}
+
+/** COACH_DEBUG when expanded (same as coach). */
+export function shouldRunCoachVerboseLogging(): boolean {
+  return isOverlayExpandedForCoach()
+}
+
+export function fitOverlayToContent(req: OverlayFitRequest): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+
+  const display = getOverlayTargetDisplay()
+  const target: import('../services/overlay-placement').OverlayDisplayLike = {
+    id: display.id,
+    label: display.label,
+    bounds: display.bounds,
+    isPrimary: display.id === screen.getPrimaryDisplay().id
+  }
+  const next = resolveOverlayFitBounds(req, target, overlayWindow.getBounds())
+  setBoundsQuiet(overlayWindow, next)
+
+  if (req.mode === 'pill') {
+    sendOverlayPillMode(overlayWindow, true)
+  } else if (!isPillBounds(next)) {
+    cachedExpandedBounds = next
+    setSetting('overlayPosition', { x: next.x, y: next.y })
+    setSetting('overlaySize', { width: next.width, height: next.height })
+  }
+}
+
 export function setOverlayBackgroundWatch(enabled: boolean): void {
   backgroundWatchMode = enabled
   if (overlayWindow && !overlayWindow.isDestroyed()) {
-    applyOverlayInteractiveState(overlayWindow, !enabled)
+    applyOverlayBackgroundLayout(overlayWindow, enabled)
   }
   syncMacAppActivationPolicy()
 }

@@ -56,7 +56,7 @@ describe('bootstrapSettingsFromEnv', () => {
     expect(setSetting).not.toHaveBeenCalledWith('assistantMode', expect.anything())
   })
 
-  it('does not overwrite existing gemini key in store', () => {
+  it('syncs gemini key when env differs from store', () => {
     process.env.GEMINI_API_KEY = 'AIza-new'
     getSetting.mockImplementation((key: string) => {
       if (key === 'geminiApiKey') return 'AIza-existing'
@@ -65,6 +65,6 @@ describe('bootstrapSettingsFromEnv', () => {
 
     bootstrapSettingsFromEnv()
 
-    expect(setSetting).not.toHaveBeenCalledWith('geminiApiKey', expect.anything())
+    expect(setSetting).toHaveBeenCalledWith('geminiApiKey', 'AIza-new')
   })
 })

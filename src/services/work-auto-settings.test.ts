@@ -23,11 +23,11 @@ describe('work auto settings gate', () => {
       workAreaCaptureEnabled: true,
       workAreaDisplayId: 0,
       detectIntervalSec: DEFAULT_SETTINGS.detectIntervalSec,
-      coachCooldownSec: DEFAULT_SETTINGS.coachCooldownSec
+      coachCooldownSec: DEFAULT_SETTINGS.workCoachCooldownSec
     })
   })
 
-  it('does not overwrite existing intervals when enabling', () => {
+  it('raises cooldown to work minimum without lowering user value above it', () => {
     const patch = buildWorkAutoEnablePatch({
       workAreaDisplayId: 2,
       detectIntervalSec: 8,
@@ -35,7 +35,14 @@ describe('work auto settings gate', () => {
     })
     expect(patch.workAreaDisplayId).toBeUndefined()
     expect(patch.detectIntervalSec).toBeUndefined()
-    expect(patch.coachCooldownSec).toBeUndefined()
+    expect(patch.coachCooldownSec).toBe(DEFAULT_SETTINGS.workCoachCooldownSec)
+  })
+
+  it('keeps user cooldown when already above work minimum', () => {
+    const patch = buildWorkAutoEnablePatch({
+      coachCooldownSec: 120
+    })
+    expect(patch.coachCooldownSec).toBe(120)
   })
 
   it('disables auto without touching unrelated settings', () => {

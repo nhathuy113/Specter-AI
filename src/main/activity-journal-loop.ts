@@ -8,12 +8,14 @@ import { extractScreenContext } from '../services/context-router'
 import { fingerprintJournalFocus } from '../services/fingerprint'
 import { getSetting } from '../services/store'
 import { captureScreenText } from './screen-capture'
-import { syncOverlayBackgroundMode } from './overlay-window'
+import { syncOverlayBackgroundMode, shouldRunWorkJournal } from './overlay-window'
 
 let journalTimer: ReturnType<typeof setInterval> | null = null
 
 /** Standalone journal tick — smart crop + OCR when journalSmartCrop enabled. */
 export async function recordActivityJournalTick(): Promise<void> {
+  if (!shouldRunWorkJournal()) return
+
   const smartCrop = getSetting<boolean>('journalSmartCrop') ?? DEFAULT_SETTINGS.journalSmartCrop
   const useSmartCrop = smartCrop && (getSetting<boolean>('smartCrop') ?? DEFAULT_SETTINGS.smartCrop)
 

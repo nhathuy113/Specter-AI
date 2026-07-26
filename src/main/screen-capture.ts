@@ -20,7 +20,8 @@ import {
 import { resolveSmartCapturePlan } from '../services/smart-capture'
 import { planPinnedWorkDisplay, workAreaCaptureActive } from '../services/work-area-capture'
 import { getOverlayWindow, isOverlayBackgroundWatch, releaseForegroundAfterBackgroundWork, showOverlay } from './overlay-window'
-import { getMacOSFrontWindowInfo, rememberMacOSForegroundForRestore } from './macos-front-window'
+import { getMacOSFrontWindowInfo, isSpecterForeground, rememberMacOSForegroundForRestore } from './macos-front-window'
+import { resolveWorkWindowForCrop } from './work-window-memory'
 
 let isCapturing = false
 
@@ -346,7 +347,8 @@ export async function captureScreenText(
   let frontWindowMeta: ReturnType<typeof getMacOSFrontWindowInfo> = null
   if (activeWindowOnly) {
     if (process.platform === 'darwin') {
-      frontWindowMeta = getMacOSFrontWindowInfo()
+      const liveFront = getMacOSFrontWindowInfo()
+      frontWindowMeta = resolveWorkWindowForCrop(liveFront)
       if (frontWindowMeta) {
         activeWindowBounds = {
           x: frontWindowMeta.x,
@@ -354,6 +356,11 @@ export async function captureScreenText(
           width: frontWindowMeta.width,
           height: frontWindowMeta.height,
           title: frontWindowMeta.windowTitle || frontWindowMeta.appName
+        }
+        if (liveFront && isSpecterForeground(liveFront) && frontWindowMeta !== liveFront) {
+          console.info(
+            `[Specter] Crop using remembered work window: ${frontWindowMeta.appName} | ${frontWindowMeta.windowTitle || '(no title)'}`
+          )
         }
       }
     } else {

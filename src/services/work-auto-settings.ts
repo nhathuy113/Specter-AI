@@ -40,9 +40,10 @@ export function buildWorkAutoEnablePatch(existing: {
   if (!existing.detectIntervalSec) {
     patch.detectIntervalSec = DEFAULT_SETTINGS.detectIntervalSec
   }
-  if (!existing.coachCooldownSec) {
-    patch.coachCooldownSec = DEFAULT_SETTINGS.coachCooldownSec
-  }
+  patch.coachCooldownSec = Math.max(
+    existing.coachCooldownSec ?? 0,
+    DEFAULT_SETTINGS.workCoachCooldownSec
+  )
 
   return patch
 }

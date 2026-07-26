@@ -1,11 +1,18 @@
 // Overlay App — main overlay UI component for Specter AI
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import ResponseCard from './ResponseCard'
+import CoachTriplePanel from './CoachTriplePanel'
+import WorkCoachGuidePanel from './WorkCoachGuidePanel'
 import TranscriptBar from './TranscriptBar'
 import MeetingRecorder from './MeetingRecorder'
-import { Send, Mic, MicOff, Monitor, Settings, GripVertical, Minimize2, Maximize2, X, ScanSearch, Paperclip, Trash2, Clock, ChevronLeft, MessageSquare, Power } from 'lucide-react'
+import { Send, Mic, MicOff, Monitor, Settings, GripVertical, Minimize2, Maximize2, X, ScanSearch, Paperclip, Trash2, Clock, ChevronLeft, MessageSquare, Power, Sparkles } from 'lucide-react'
 import type { StreamDoneData } from '../../preload/index'
-import type { Message, Conversation } from '../../shared/types'
+import type { Message, Conversation, AssistantMode } from '../../shared/types'
+import {
+  WORK_COACH_TRIPLE_LABELS,
+  WORK_COACH_TRIPLE_PLACEHOLDERS
+} from '../../shared/constants'
+import { sanitizeCoachDisplayText } from '../../shared/coach-display'
 
 declare global {
   interface Window {
@@ -50,10 +57,19 @@ export default function App() {
   const [historyList, setHistoryList] = useState<Conversation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [autoModeHint, setAutoModeHint] = useState<string | null>(null)
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>('general')
+  const [coachTriple, setCoachTriple] = useState<{
+    labels: string[]
+    panels: string[]
+    panelDone: boolean[]
+  } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const measureRef = useRef<HTMLDivElement>(null)
+  const layoutGenerationRef = useRef(0)
+  const [layoutLocked, setLayoutLocked] = useState(false)
 
   // Current conversation ID — generated when first message is sent
   const conversationIdRef = useRef<string>(`conv-${Date.now()}`)
@@ -65,6 +81,8 @@ export default function App() {
   const includeScreenRef = useRef(includeScreen)
   const messagesRef = useRef(messages)
   const selectedModelRef = useRef(selectedModel)
+  const isMinimizedRef = useRef(isMinimized)
+  const assistantModeRef = useRef(assistantMode)
 
   // Keep refs in sync with state
   queryRef.current = query
@@ -73,6 +91,8 @@ export default function App() {
   includeScreenRef.current = includeScreen
   messagesRef.current = messages
   selectedModelRef.current = selectedModel
+  isMinimizedRef.current = isMinimized
+  assistantModeRef.current = assistantMode
 
   // Pending cost data for the current stream
   const pendingCostRef = useRef<StreamDoneData | null>(null)
@@ -87,17 +107,29 @@ export default function App() {
   const autoCaptureTextRef = useRef<string>('')
   const isCoachQueryRef = useRef(false)
   const autoModeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const coachTripleRef = useRef(coachTriple)
+  coachTripleRef.current = coachTriple
+
 
   const finishCoachStreaming = useCallback(() => {
     if (!isCoachQueryRef.current) return
     isCoachQueryRef.current = false
+    if (assistantModeRef.current !== 'work' || isMinimizedRef.current) {
+      setCoachTriple(null)
+      document.documentElement.classList.remove('specter-triple-coach')
+    }
     window.specterAPI?.setCoachStreaming(false)
   }, [])
 
-  const stripCoachThreadMarker = (text: string) => {
-    const idx = text.indexOf('---THREAD---')
-    return idx < 0 ? text : text.slice(0, idx).trim()
-  }
+  const createEmptyWorkCoachTriple = useCallback(() => ({
+    labels: [...WORK_COACH_TRIPLE_LABELS],
+    panels: WORK_COACH_TRIPLE_LABELS.map(() => ''),
+    panelDone: WORK_COACH_TRIPLE_LABELS.map(() => true)
+  }), [])
+
+  const formatCoachReply = useCallback((text: string) => {
+    return isCoachQueryRef.current ? sanitizeCoachDisplayText(text) : text
+  }, [])
 
   // Ref for stopRecording to avoid stale closure in setInterval
   const stopRecordingRef = useRef<() => void>(() => {})
@@ -109,14 +141,15 @@ export default function App() {
 
   // Load theme and selected model from settings
   useEffect(() => {
+    document.documentElement.classList.add('specter-overlay-root')
     window.specterAPI?.getSetting<'dark' | 'light' | 'glass'>('theme').then((t) => {
-      const resolved = t || 'dark'
+      const resolved = t === 'light' ? 'light' : 'glass'
       setTheme(resolved)
       document.documentElement.setAttribute('data-theme', resolved)
     })
     window.specterAPI?.getSetting<number>('overlayOpacity').then((o) => {
       if (typeof o === 'number' && o >= 0.3 && o <= 1) {
-        document.documentElement.style.setProperty('--specter-glass-strength', String(o))
+        document.documentElement.style.setProperty('--specter-glass-tint', String(o))
       }
     })
     window.specterAPI?.getSetting<string>('selectedModel').then((m) => {
@@ -124,6 +157,9 @@ export default function App() {
     })
     window.specterAPI?.getSetting<number>('autoHideDelay').then((d) => {
       if (typeof d === 'number' && d >= 0) setAutoHideDelay(d)
+    })
+    window.specterAPI?.getSetting<AssistantMode>('assistantMode').then((mode) => {
+      if (mode) setAssistantMode(mode)
     })
     Promise.all([
       window.specterAPI?.getSetting<boolean>('fullAutoMode'),
@@ -133,6 +169,61 @@ export default function App() {
       if (fullAuto || coach || journal) setIsMinimized(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (assistantMode === 'work' && !isMinimized) {
+      document.documentElement.classList.add('specter-triple-coach')
+      setCoachTriple((prev) => prev ?? createEmptyWorkCoachTriple())
+      return
+    }
+    if (assistantMode !== 'work') {
+      document.documentElement.classList.remove('specter-triple-coach')
+    }
+  }, [assistantMode, isMinimized, createEmptyWorkCoachTriple])
+
+  const coachTripleSignature = coachTriple?.panels.join('\u0000').length ?? 0
+
+  useLayoutEffect(() => {
+    const generation = ++layoutGenerationRef.current
+    setLayoutLocked(false)
+
+    const frame = requestAnimationFrame(() => {
+      const el = measureRef.current
+      if (!el || generation !== layoutGenerationRef.current) return
+
+      const mode = isMinimizedRef.current
+        ? 'pill'
+        : assistantModeRef.current === 'work'
+          ? 'work-triple'
+          : 'panel'
+
+      window.specterAPI?.fitOverlayContent({
+        mode,
+        width: el.scrollWidth,
+        height: el.scrollHeight
+      })
+
+      requestAnimationFrame(() => {
+        if (generation === layoutGenerationRef.current) {
+          setLayoutLocked(true)
+        }
+      })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [
+    isMinimized,
+    assistantMode,
+    messages.length,
+    showHistory,
+    isStreaming,
+    coachTripleSignature,
+    error,
+    isRecording,
+    !!attachedScreenshot,
+    setupError,
+    autoModeHint
+  ])
 
   const refreshSetupStatus = useCallback(async () => {
     try {
@@ -164,13 +255,17 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
-  // Glass strength via CSS variable (not whole-window opacity — keeps text crisp like macOS vibrancy)
+  // Native macOS vibrancy vs CSS backdrop-filter fallback
   useEffect(() => {
     const api = window.specterAPI
     if (!api?.onOpacityChange) return
 
     const unsubOpacity = api.onOpacityChange((opacity) => {
-      document.documentElement.style.setProperty('--specter-glass-strength', String(opacity))
+      document.documentElement.style.setProperty('--specter-glass-tint', String(opacity))
+    })
+
+    const unsubGlass = api.onGlassModeChange?.(({ native }) => {
+      document.documentElement.classList.toggle('specter-native-glass', native)
     })
 
     const unsubPill = api.onOverlayPillMode?.(({ minimized }) => {
@@ -179,6 +274,7 @@ export default function App() {
 
     return () => {
       unsubOpacity()
+      unsubGlass?.()
       unsubPill?.()
     }
   }, [])
@@ -487,31 +583,34 @@ export default function App() {
     useVision?: boolean
     screenshot?: string
   }) => {
-    if (isStreamingRef.current) return
+    if (isMinimizedRef.current) return
     if (!payload.screenText.trim()) return
     if (!(await ensureAiConfigured())) return
+
+    if (isStreamingRef.current && isCoachQueryRef.current) {
+      window.specterAPI?.cancelAI()
+      setCoachTriple(null)
+      document.documentElement.classList.remove('specter-triple-coach')
+      setStreamingContent('')
+      setIsStreaming(false)
+      window.specterAPI?.setCoachStreaming(false)
+    } else if (isStreamingRef.current) {
+      return
+    }
 
     isCoachQueryRef.current = true
     window.specterAPI?.setCoachStreaming(true)
 
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: '[Coach] New screen state detected',
-      timestamp: Date.now()
-    }
-
-    setMessages((prev) => [...prev, userMessage])
     setError(null)
     setIsStreaming(true)
     setStreamingContent('')
     pendingCostRef.current = null
 
     window.specterAPI?.queryAI(
-      'Giải thích phần mới trên màn hình (bài/slide/bảng) — tiếp session, dạy từng bước bằng tiếng Việt.',
+      '[Coach auto]',
       false,
       false,
-      [], // screen-only — no chat history (avoids HOI4/mod bleed)
+      [],
       {
         screenTextOverride: payload.screenText,
         screenshotOverride: payload.screenshot,
@@ -570,6 +669,13 @@ export default function App() {
       autoModeHintTimerRef.current = null
     }, 2500)
   }, [])
+
+  const pillLabel =
+    assistantMode === 'work'
+      ? autoModeHint === 'Auto OFF'
+        ? 'Auto OFF'
+        : 'Work log'
+      : (autoModeHint ?? 'Specter')
 
   /**
    * Submit meeting transcript to AI — called by MeetingRecorder after transcription.
@@ -660,7 +766,10 @@ export default function App() {
     setError(null)
     setAudioError(null)
     conversationIdRef.current = `conv-${Date.now()}`
-  }, [])
+    if (assistantModeRef.current === 'work' && !isMinimizedRef.current) {
+      setCoachTriple(createEmptyWorkCoachTriple())
+    }
+  }, [createEmptyWorkCoachTriple])
 
   /**
    * Open the history drawer and load conversations from storage.
@@ -739,12 +848,22 @@ export default function App() {
 
     const unsubDone = api.onStreamDone((data: StreamDoneData) => {
       pendingCostRef.current = data
-      // Update selectedModel from the response if available
       if (data.model) setSelectedModel(data.model)
       setStreamingContent((prev) => {
-        if (prev) {
+        const triple = coachTripleRef.current
+        const tripleText = triple
+          ? triple.labels
+              .map((label, index) => `## ${label}\n\n${triple.panels[index] || ''}`)
+              .join('\n\n---\n\n')
+          : ''
+        const raw = tripleText || prev
+        const keepInColumnsOnly =
+          assistantModeRef.current === 'work' &&
+          !isMinimizedRef.current &&
+          (coachTripleRef.current || tripleText)
+        if (raw && !keepInColumnsOnly) {
           const costData = pendingCostRef.current
-          const content = isCoachQueryRef.current ? stripCoachThreadMarker(prev) : prev
+          const content = isCoachQueryRef.current ? sanitizeCoachDisplayText(raw) : raw
           setMessages((msgs) => [
             ...msgs,
             {
@@ -825,6 +944,33 @@ export default function App() {
       triggerCoachAdvice(data)
     })
 
+    const unsubCoachTripleStart = api.onCoachTripleStart(({ labels }) => {
+      setCoachTriple({
+        labels,
+        panels: labels.map(() => ''),
+        panelDone: labels.map(() => false)
+      })
+      document.documentElement.classList.add('specter-triple-coach')
+      if (!isMinimizedRef.current) {
+        window.specterAPI?.expandOverlay()
+      }
+    })
+
+    const unsubCoachTriplePanel = api.onCoachTriplePanel(({ index, content, done }) => {
+      setCoachTriple((prev) => {
+        if (!prev) return prev
+        const panels = [...prev.panels]
+        const panelDone = [...prev.panelDone]
+        panels[index] = content
+        panelDone[index] = done
+        return { ...prev, panels, panelDone }
+      })
+    })
+
+    const unsubCoachTripleDone = api.onCoachTripleDone(() => {
+      // Combined message saved in onStreamDone.
+    })
+
     return () => {
       unsubChunk()
       unsubDone()
@@ -835,6 +981,9 @@ export default function App() {
       unsubHotkeyAudio()
       unsubAutoCapture()
       unsubCoachTrigger()
+      unsubCoachTripleStart()
+      unsubCoachTriplePanel()
+      unsubCoachTripleDone()
     }
   }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming, showAutoModeHint])
 
@@ -846,20 +995,44 @@ export default function App() {
   }
 
   if (isMinimized) {
+    const isWorkPill = assistantMode === 'work'
     return (
-      <div className="w-full h-full flex items-center justify-center gap-1.5 px-1">
+      <div
+        ref={measureRef}
+        className={layoutLocked ? 'h-full w-full flex items-center justify-center' : 'inline-flex w-fit h-fit'}
+      >
+      <div className="flex items-center justify-center gap-1.5 px-1">
         <button
           onClick={() => {
             setIsMinimized(false)
             window.specterAPI?.expandOverlay()
           }}
-          className="specter-pill-glass group flex items-center gap-2 px-3 py-1.5 rounded-full
-                     border-2 border-violet-400/50
-                     hover:border-violet-400/80 transition-all duration-300"
+          className={`specter-pill-glass group flex items-center gap-2 py-1.5 rounded-full
+                     border-2 transition-all duration-300
+                     ${isWorkPill
+              ? 'specter-work-pill border-emerald-400/40 hover:border-emerald-400/70'
+              : 'px-3 border-violet-400/50 hover:border-violet-400/80'}`}
         >
-          <div className={`w-2 h-2 rounded-full animate-pulse ${autoModeHint === 'Auto ON' ? 'bg-emerald-400' : autoModeHint === 'Auto OFF' ? 'bg-amber-400' : 'bg-violet-500'}`} />
-          <span className="text-white/80 text-sm font-medium">{autoModeHint ?? 'Specter'}</span>
-          <Maximize2 className="w-3 h-3 text-white/50 group-hover:text-white/80 transition-colors" />
+          <div className={isWorkPill ? 'specter-work-pill-body' : 'flex items-center gap-2'}>
+            <div className={isWorkPill ? 'specter-work-pill-title' : 'flex items-center gap-2'}>
+              <div className={`w-2 h-2 rounded-full animate-pulse shrink-0 ${
+                autoModeHint === 'Auto OFF'
+                  ? 'bg-amber-400'
+                  : isWorkPill
+                    ? 'bg-emerald-400'
+                    : autoModeHint === 'Auto ON'
+                      ? 'bg-emerald-400'
+                      : 'bg-violet-500'
+              }`} />
+              <span className={isWorkPill ? '' : 'text-white/80 text-sm font-medium'}>{pillLabel}</span>
+            </div>
+            {isWorkPill && autoModeHint !== 'Auto OFF' && (
+              <span className="specter-work-pill-sub">bấm → mở coach</span>
+            )}
+          </div>
+          <Maximize2 className={`w-3 h-3 shrink-0 transition-colors ${
+            isWorkPill ? 'text-emerald-300/50 group-hover:text-emerald-300/90' : 'text-white/50 group-hover:text-white/80'
+          }`} />
         </button>
         <button
           onClick={() => window.specterAPI?.quit()}
@@ -870,13 +1043,18 @@ export default function App() {
           <Power className="w-3.5 h-3.5 text-white/40 hover:text-red-400" />
         </button>
       </div>
+      </div>
     )
   }
 
   return (
     <div
+      ref={measureRef}
+      className={layoutLocked ? 'h-full w-full min-h-0 flex flex-col' : 'inline-block w-fit max-w-none'}
+    >
+    <div
       ref={containerRef}
-      className="specter-overlay-panel h-screen w-full flex flex-col rounded-2xl overflow-hidden"
+      className={`specter-overlay-panel w-full flex flex-col rounded-2xl overflow-hidden ${layoutLocked ? 'h-full min-h-0' : ''}`}
       style={{
         WebkitAppRegion: 'no-drag'
       } as React.CSSProperties}
@@ -1059,67 +1237,127 @@ export default function App() {
       )}
 
       {/* Messages area */}
-      <div className={`specter-overlay-messages flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''}`}>
-        {messages.length === 0 && !isStreaming && (
-          <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <div className="w-12 h-12 rounded-2xl bg-violet-500/20 flex items-center justify-center mb-4">
-              <div className="w-5 h-5 rounded-full bg-violet-500/60 animate-pulse" />
+      {(() => {
+        const isWorkCoachLayout = assistantMode === 'work' && !isMinimized
+        return (
+      <div className={`specter-overlay-messages flex-1 overflow-y-auto px-4 py-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''} ${isWorkCoachLayout ? 'flex flex-col gap-2 min-h-0' : 'space-y-3'}`}>
+        {isWorkCoachLayout ? (
+          <>
+            <div className="flex items-center gap-2 shrink-0 px-1">
+              <div className="w-8 h-8 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
+                <Sparkles className="w-4 h-4 text-violet-300/80" />
+              </div>
+              <div className="text-left min-w-0">
+                <h3 className="text-white/80 text-sm font-semibold leading-tight">Work coach · 2 models</h3>
+                <p className="text-white/35 text-[11px] leading-snug mt-0.5">
+                  Lite · 3.6 Flash — song song mỗi lần capture
+                </p>
+              </div>
             </div>
-            <h3 className="text-white/70 text-sm font-medium mb-3">Ready to assist</h3>
 
-            {/* Analyze Screen — primary action button */}
-            <button
-              onClick={analyzeScreen}
-              disabled={isStreaming || isCapturing}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl
-                         bg-violet-500/20 text-violet-300 border border-violet-500/30
-                         hover:bg-violet-500/30 hover:border-violet-500/50
-                         disabled:opacity-40 disabled:cursor-not-allowed
-                         transition-all duration-200 mb-2 text-sm font-medium"
-            >
-              <ScanSearch className="w-4 h-4" />
-              {isCapturing ? 'Capturing...' : 'Analyze Screen'}
-            </button>
+            {messages.filter((m) => m.role === 'user').length > 0 && (
+              <div className="space-y-2 shrink-0 max-h-28 overflow-y-auto">
+                {messages
+                  .filter((m) => m.role === 'user')
+                  .slice(-2)
+                  .map((msg) => (
+                    <ResponseCard key={msg.id} message={msg} />
+                  ))}
+              </div>
+            )}
 
-            {/* Record Meeting — system audio capture */}
-            <MeetingRecorder
-              onTranscriptReady={submitMeetingTranscript}
-              disabled={isStreaming}
-            />
+            {messages.length === 0 && !isStreaming && (
+              <div className="specter-work-guide-empty shrink-0">
+                <WorkCoachGuidePanel />
+              </div>
+            )}
 
-            <p className="text-white/30 text-xs leading-relaxed">
-              Click above to analyze your screen, or type a question below.
-              <br />
-              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/50 text-[10px] font-mono">
-                Ctrl+Shift+Enter
-              </kbd>{' '}
-              for screen + AI &nbsp;
-              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/50 text-[10px] font-mono">
-                Ctrl+Enter
-              </kbd>{' '}
-              to send
-            </p>
+            {coachTriple && (
+              <CoachTriplePanel
+                labels={coachTriple.labels}
+                panels={coachTriple.panels}
+                panelDone={coachTriple.panelDone}
+                placeholders={WORK_COACH_TRIPLE_PLACEHOLDERS}
+                isStreaming={isStreaming}
+              />
+            )}
+          </>
+        ) : (
+          <>
+        {messages.length === 0 && !isStreaming && (
+          <div className="flex flex-col items-center justify-center min-h-full text-center px-4 py-6">
+              <>
+                <div className="w-12 h-12 rounded-2xl bg-violet-500/20 flex items-center justify-center mb-4">
+                  <div className="w-5 h-5 rounded-full bg-violet-500/60 animate-pulse" />
+                </div>
+                <h3 className="text-white/70 text-sm font-medium mb-3">Ready to assist</h3>
+
+                <button
+                  onClick={analyzeScreen}
+                  disabled={isStreaming || isCapturing}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl
+                             bg-violet-500/20 text-violet-300 border border-violet-500/30
+                             hover:bg-violet-500/30 hover:border-violet-500/50
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             transition-all duration-200 mb-2 text-sm font-medium"
+                >
+                  <ScanSearch className="w-4 h-4" />
+                  {isCapturing ? 'Capturing...' : 'Analyze Screen'}
+                </button>
+
+                <MeetingRecorder
+                  onTranscriptReady={submitMeetingTranscript}
+                  disabled={isStreaming}
+                />
+
+                <p className="text-white/30 text-xs leading-relaxed">
+                  Click above to analyze your screen, or type a question below.
+                  <br />
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/50 text-[10px] font-mono">
+                    Ctrl+Shift+Enter
+                  </kbd>{' '}
+                  for screen + AI &nbsp;
+                  <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/50 text-[10px] font-mono">
+                    Ctrl+Enter
+                  </kbd>{' '}
+                  to send
+                </p>
+              </>
           </div>
         )}
 
         {messages.map((msg) => (
-          <ResponseCard key={msg.id} message={msg} />
+          <ResponseCard
+            key={msg.id}
+            message={{
+              ...msg,
+              content:
+                msg.role === 'assistant' ? sanitizeCoachDisplayText(msg.content) : msg.content
+            }}
+          />
         ))}
 
-        {isStreaming && streamingContent && (
+        {coachTriple && isStreaming && (
+          <CoachTriplePanel
+            labels={coachTriple.labels}
+            panels={coachTriple.panels}
+            panelDone={coachTriple.panelDone}
+          />
+        )}
+
+        {isStreaming && streamingContent && !coachTriple && (
           <ResponseCard
             message={{
               id: 'streaming',
               role: 'assistant',
-              content: streamingContent,
+              content: formatCoachReply(streamingContent),
               timestamp: Date.now()
             }}
             isStreaming
           />
         )}
 
-        {/* Loading indicator when streaming starts but no content yet */}
-        {isStreaming && !streamingContent && (
+        {isStreaming && !streamingContent && !coachTriple && (
           <div className="flex items-center gap-2 px-3 py-2">
             <div className="flex gap-1">
               <div className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -1130,6 +1368,8 @@ export default function App() {
               {includeScreen || isCapturing ? 'Capturing screen & thinking...' : 'Thinking...'}
             </span>
           </div>
+        )}
+          </>
         )}
 
         {error && (
@@ -1159,6 +1399,8 @@ export default function App() {
 
         <div ref={messagesEndRef} />
       </div>
+        )
+      })()}
 
       {/* Transcript bar */}
       {isRecording && !showHistory && <TranscriptBar transcript={transcript} isRecording={isRecording} />}
@@ -1289,6 +1531,7 @@ export default function App() {
         </div>
       </div>
       )}
+    </div>
     </div>
   )
 }

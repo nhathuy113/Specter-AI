@@ -33,6 +33,11 @@ export interface SpecterAPI {
   onStreamChunk: (callback: (chunk: string) => void) => () => void
   onStreamDone: (callback: (data: StreamDoneData) => void) => () => void
   onStreamError: (callback: (error: string) => void) => () => void
+  onCoachTripleStart: (callback: (data: { labels: string[] }) => void) => () => void
+  onCoachTriplePanel: (
+    callback: (data: { index: number; content: string; done: boolean }) => void
+  ) => () => void
+  onCoachTripleDone: (callback: () => void) => () => void
 
   // Screen
   captureScreen: () => Promise<{ text: string; screenshot?: string; timestamp: number }>
@@ -97,9 +102,11 @@ export interface SpecterAPI {
 
   // Overlay opacity — applied via CSS (not native) to avoid WS_EX_LAYERED breaking WDA_EXCLUDEFROMCAPTURE
   onOpacityChange: (callback: (opacity: number) => void) => () => void
+  onGlassModeChange: (callback: (data: { native: boolean }) => void) => () => void
   onOverlayPillMode: (callback: (data: { minimized: boolean }) => void) => () => void
   expandOverlay: () => void
   collapseOverlay: () => void
+  fitOverlayContent: (payload: { mode: 'pill' | 'panel' | 'work-triple'; width: number; height: number }) => void
 }
 
 // --- Type guard helpers for IPC callback data ---
@@ -119,6 +126,18 @@ function isStreamDoneData(v: unknown): v is StreamDoneData {
     typeof d.totalCost === 'number' &&
     typeof d.model === 'string'
   )
+}
+
+function isCoachTripleStart(v: unknown): v is { labels: string[] } {
+  if (typeof v !== 'object' || v === null) return false
+  const d = v as Record<string, unknown>
+  return Array.isArray(d.labels) && d.labels.every((l) => typeof l === 'string')
+}
+
+function isCoachTriplePanel(v: unknown): v is { index: number; content: string; done: boolean } {
+  if (typeof v !== 'object' || v === null) return false
+  const d = v as Record<string, unknown>
+  return typeof d.index === 'number' && typeof d.content === 'string' && typeof d.done === 'boolean'
 }
 
 function isAudioStatus(v: unknown): v is { isRecording: boolean; duration: number; error?: string } {
@@ -173,6 +192,25 @@ const api: SpecterAPI = {
     }
     ipcRenderer.on(IPC_CHANNELS.AI_STREAM_ERROR, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.AI_STREAM_ERROR, handler)
+  },
+  onCoachTripleStart: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
+      if (isCoachTripleStart(data)) callback(data)
+    }
+    ipcRenderer.on(IPC_CHANNELS.AI_COACH_TRIPLE_START, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.AI_COACH_TRIPLE_START, handler)
+  },
+  onCoachTriplePanel: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
+      if (isCoachTriplePanel(data)) callback(data)
+    }
+    ipcRenderer.on(IPC_CHANNELS.AI_COACH_TRIPLE_PANEL, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.AI_COACH_TRIPLE_PANEL, handler)
+  },
+  onCoachTripleDone: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC_CHANNELS.AI_COACH_TRIPLE_DONE, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.AI_COACH_TRIPLE_DONE, handler)
   },
 
   // Screen
@@ -333,6 +371,16 @@ const api: SpecterAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.OVERLAY_SET_OPACITY, handler)
   },
 
+  onGlassModeChange: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
+      if (typeof data === 'object' && data !== null && typeof (data as { native?: unknown }).native === 'boolean') {
+        callback({ native: (data as { native: boolean }).native })
+      }
+    }
+    ipcRenderer.on(IPC_CHANNELS.OVERLAY_SET_GLASS_MODE, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.OVERLAY_SET_GLASS_MODE, handler)
+  },
+
   onOverlayPillMode: (callback) => {
     const handler = (_: Electron.IpcRendererEvent, data: unknown) => {
       if (typeof data === 'object' && data !== null && typeof (data as { minimized?: unknown }).minimized === 'boolean') {
@@ -344,7 +392,8 @@ const api: SpecterAPI = {
   },
 
   expandOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_EXPAND),
-  collapseOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_COLLAPSE)
+  collapseOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_COLLAPSE),
+  fitOverlayContent: (payload) => ipcRenderer.send(IPC_CHANNELS.OVERLAY_FIT_CONTENT, payload)
 }
 
 contextBridge.exposeInMainWorld('specterAPI', api)

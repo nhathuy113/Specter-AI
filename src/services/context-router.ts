@@ -2,6 +2,8 @@ import type { AssistantMode } from '../shared/types'
 import type { ScreenMetadata } from '../shared/types'
 import { detectGameLog, GAME_LOG_SIGNAL } from './skills/game-log'
 import { detectCodeErrors } from './skills/code-error'
+import { extractEditorCodeText } from './work-coach-snippet'
+import { resolveWorkProblemProfile, type WorkProblemProfile } from './work-problem-profile'
 
 export type ScreenKind = 'empty' | 'ide' | 'code' | 'game-log' | 'browser' | 'general'
 
@@ -90,12 +92,18 @@ export function extractScreenContext(
   }
 
   if (codeErrors || CODE_SIGNAL.test(body) || (IDE_SIGNAL.test(lower) && /\b(error|exception|failed|warning)\b/i.test(body))) {
-    const focused = codeErrors?.focusedText
-      || lines.filter((line) => CODE_SIGNAL.test(line) || /^\s*at /.test(line) || /error/i.test(line)).join('\n')
-      || body
+    const errorPart =
+      codeErrors?.focusedText ||
+      lines.filter((line) => CODE_SIGNAL.test(line) || /^\s*at /.test(line) || /error/i.test(line)).join('\n') ||
+      body
+    const editorCode = extractEditorCodeText(body)
+    let focused =
+      mode === 'work' && editorCode.trim()
+        ? [errorPart.trim().slice(0, 800), '', '[EDITOR CODE — xem block riêng phía trên trong coach context]'].join('\n')
+        : errorPart.slice(0, 4000)
     return {
       kind: 'code',
-      focusedText: prependMetadata(focused.slice(0, 4000), metadata),
+      focusedText: prependMetadata(focused, metadata),
       actionable: true
     }
   }
@@ -156,30 +164,34 @@ export interface AssistantRequest {
   userMessage: string
   instantReply?: string
   actionable: boolean
+  workProblem?: WorkProblemProfile
 }
 
-function taskForMode(mode: AssistantMode, kind: ScreenKind): string[] {
+function taskForMode(mode: AssistantMode, kind: ScreenKind, profile?: WorkProblemProfile): string[] {
   const base = [
     'Recommend what the user should consider doing next based only on what you see.',
     'Use 1-3 short bullets when helpful. Never claim you clicked or typed anything.'
   ]
 
+  if (mode === 'work' && profile?.taskHints.length) {
+    return profile.taskHints
+  }
+
   if (mode === 'work' || (mode === 'general' && kind === 'code')) {
+    const workFormat = [
+      'Reply format block is appended separately (full 6 sections first time, short 4 sections on continuation).',
+      'LeetCode first visit: teach ONE step — median example before partition. If editor already has while/if/return logic, review bugs in place — do NOT restart with brute force merge.'
+    ]
     if (mode === 'work' && kind === 'browser') {
       return [
-        'User is studying in a browser (video, article, slides, lecture board).',
-        'Explain what is on screen like a teacher at the board: topic → each bullet/chart/formula → meaning of visible numbers.',
-        'Quote stats and labels exactly. Use plain Vietnamese if content is Vietnamese.',
-        'Do NOT redirect to other apps or files. Optional: one short recap sentence at the end.'
+        'User is studying in a browser (video, article, slides, LeetCode, lecture).',
+        'For LeetCode/coding problems: Giải pháp = exact algorithm steps + edge cases + what to code next — not vague "use binary search".',
+        ...workFormat
       ]
     }
     return [
-      'Focus on work visible on screen: homework, exercises, quizzes, coding, debugging.',
-      'If a question or problem is visible: answer it directly or give the next concrete step.',
-      'If code/errors are visible: suggest the fix or snippet to write next.',
-      'Use the same language as the question (Vietnamese or English).',
-      'If errors are listed, give the most likely fix first, then a next debug step.',
-      ...base
+      'Focus on work visible on screen: homework, LeetCode, exercises, quizzes, coding, debugging.',
+      ...workFormat
     ]
   }
 
@@ -206,19 +218,49 @@ function taskForMode(mode: AssistantMode, kind: ScreenKind): string[] {
   return base
 }
 
+function buildWorkCoachUserMessage(
+  ctx: ScreenContext,
+  metadata?: ScreenMetadata,
+  profile?: WorkProblemProfile
+): string {
+  const header = formatMetadataHeader(metadata)
+  const ocrLimit = profile?.snippetTracking ? 3000 : 800
+  const ocrBlock = ctx.focusedText.trim()
+    ? ['', '[OCR — supplementary only]', ctx.focusedText.slice(0, ocrLimit)]
+    : []
+
+  return [
+    header,
+    profile ? `[PROBLEM] ${profile.kind}` : '',
+    '',
+    '[TASK]',
+    'Screenshot attached — cropped active work window. Use the image as the primary source.',
+    'Reply in Vietnamese with a concrete answer or next step visible on screen.',
+    ...(profile?.taskHints.slice(0, 2) ?? []),
+    ...ocrBlock
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 export function resolveAssistantRequest(
   screenText: string,
   mode: AssistantMode = 'general',
   metadata?: ScreenMetadata
 ): AssistantRequest {
   const ctx = extractScreenContext(screenText, mode, metadata)
+  const workProblem =
+    mode === 'work' && ctx.kind !== 'empty'
+      ? resolveWorkProblemProfile(screenText, metadata, ctx.kind)
+      : undefined
 
   if (ctx.instantReply) {
     return {
       kind: ctx.kind,
       userMessage: '',
       instantReply: ctx.instantReply,
-      actionable: ctx.actionable
+      actionable: ctx.actionable,
+      workProblem
     }
   }
 
@@ -227,7 +269,17 @@ export function resolveAssistantRequest(
       kind: ctx.kind,
       userMessage: '',
       instantReply: ctx.instantReply,
-      actionable: false
+      actionable: false,
+      workProblem
+    }
+  }
+
+  if (mode === 'work' && workProblem) {
+    return {
+      kind: ctx.kind,
+      actionable: ctx.actionable,
+      workProblem,
+      userMessage: buildWorkCoachUserMessage(ctx, metadata, workProblem)
     }
   }
 
@@ -245,14 +297,18 @@ export function resolveAssistantRequest(
   return {
     kind: ctx.kind,
     actionable: ctx.actionable,
+    workProblem,
     userMessage: [
       `[SCREEN TYPE] ${typeLabels[ctx.kind]}`,
+      workProblem ? `[PROBLEM TYPE] ${workProblem.kind} (confidence ${workProblem.confidence.toFixed(2)})` : '',
       contentLabel,
       ctx.focusedText,
       '',
       '[TASK]',
-      ...taskForMode(mode, ctx.kind)
-    ].join('\n')
+      ...taskForMode(mode, ctx.kind, workProblem)
+    ]
+      .filter(Boolean)
+      .join('\n')
   }
 }
 

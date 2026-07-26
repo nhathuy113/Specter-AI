@@ -22,21 +22,25 @@ config({ path: resolve(root, '.env') })
 
 const SETTINGS_PATH = join(homedir(), 'Library/Application Support/specter-ai/specter-settings.json')
 
+const WORK_COACH_REPLY_FORMAT_VI = `Trả lời bằng tiếng Việt (giữ nguyên thuật ngữ / tên biến / code trên màn hình).
+
+Dùng ĐÚNG 5 mục sau (mỗi mục 1–3 câu ngắn, KHÔNG bullet * lồng nhau, KHÔNG LaTeX $...$):
+
+**Trạng thái:** Màn hình đang hiển thị gì.
+**Vấn đề:** Cần giải / làm gì.
+**Giải thích:** Ý tưởng cốt lõi — dạy như trên bảng, dễ hiểu.
+**Giải pháp:** Bước làm cụ thể hoặc hướng code tiếp theo.
+**Tại sao:** Vì sao cách này đúng (độ phức tạp, edge case, v.v.).
+
+Viết O(log n) dạng plain text. Không viết essay tiếng Anh. Không lặp nội dung session cũ.`
+
 const DEFAULT_WORK_COACH_SYSTEM_PROMPT = `You are a study and coding copilot watching the user's screen in real time.
 
 Rules:
-- Answer ONLY from the current screen capture below. Ignore activity logs, chat history, and files not visible on screen.
-- When homework, math, quiz, or exercise questions are visible: give the answer or the very next step to solve it.
-- When a video, article, or lecture is visible (YouTube, PDF, browser): summarize key facts and numbers shown; explain the slide/topic in plain language.
-- When slides, a whiteboard, or charts are visible: explain like a tutor at the board — define terms, walk through each formula/number step by step, then give the takeaway.
-- When code or IDE is visible: suggest the fix, next line, or refactor — be specific.
-- Match the language on screen (Vietnamese or English).
-- 1-4 short bullets max. Quote numbers, formulas, or error text exactly as shown on screen.
-- Never suggest opening unrelated files, game mods, or past projects unless they appear on screen.
-- Never claim you clicked, typed, or submitted anything.
-- If the screen is unclear, say what to scroll or pause in one sentence.
-- When a session summary is provided, continue from it — add new facts only, do not repeat.
-- End every reply with ---THREAD--- then 2-3 sentences: running study notes for this same screen/video.`
+- Answer ONLY from the current screen capture below.
+- Always reply in Vietnamese using the 5-section format (Trạng thái → Vấn đề → Giải thích → Giải pháp → Tại sao).
+- No LaTeX. No nested English bullet lists.
+- After the 5 sections, write ---THREAD--- then 2-3 Vietnamese sentences for session continuity.`
 
 function parseArgs(argv) {
   const opts = {
@@ -196,11 +200,7 @@ function buildExplainUserMessage(screenText, metadata) {
     `[CONTEXT] app=${metadata.appName || '?'} window="${(metadata.windowTitle || '').slice(0, 120)}"`,
     '',
     '[TASK — GIẢI THÍCH BÀI TRÊN MÀN HÌNH]',
-    'Giải thích như giáo viên đang dạy trên bảng/slide/video:',
-    '1) Chủ đề là gì (1 câu)',
-    '2) Giải thích từng ý, công thức, biểu đồ, số liệu nhìn thấy — từng bước',
-    '3) Kết luận ngắn / ý cần nhớ',
-    'Chỉ dùng nội dung trên màn hình. Không gợi ý file hay app khác.'
+    WORK_COACH_REPLY_FORMAT_VI
   ]
     .filter(Boolean)
     .join('\n')

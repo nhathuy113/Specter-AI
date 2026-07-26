@@ -11,9 +11,17 @@ import { buildSystemPrompt, buildUserMessage, estimateTokens } from '../services
 import { buildCoachSystemPrompt, resolveCoachRequest, buildActiveTabUserMessage } from '../services/coach-prompt'
 import {
   appendWorkCoachContext,
+  evaluateWorkCoachCodeReview,
   getWorkCoachThread,
+  loadWorkCoachSession,
   updateWorkCoachThread
 } from '../services/work-coach-session'
+import { resolveWorkCoachEscalation } from '../services/work-coach-escalation'
+import { runWorkCoachEscalation } from '../services/work-coach-runner'
+import { isUserConfusionFeedback } from '../services/work-coach-snippet'
+import { resolveWorkProblemProfile } from '../services/work-problem-profile'
+import { extractScreenContext } from '../services/context-router'
+import { isCoachDebugEnabled, patchCoachDebugCompletion, writeCoachDebug } from '../services/coach-debug'
 import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
 import { getRecentJournalContext, getJournalEntries, exportJournalMarkdown, clearJournal } from '../services/activity-journal'
 import { syncActivityJournal, stopActivityJournal } from './activity-journal-loop'
@@ -24,9 +32,9 @@ import { captureScreenText, captureScreenOnly } from './screen-capture'
 import { syncContinuousCoach, stopContinuousCoach, setOverlayCoachStreaming } from './continuous-coach-loop'
 import { transcribeAudio, getTranscript, checkWhisperConfig } from './audio-capture'
 import { createDashboardWindow } from './dashboard-window'
-import { setOverlayOpacity, expandOverlayWindow, showOverlayPill } from './overlay-window'
+import { setOverlayOpacity, expandOverlayWindow, showOverlayPill, shouldRunCoachVerboseLogging, fitOverlayToContent } from './overlay-window'
 import { reRegisterHotkeys } from './hotkey-manager'
-import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS, GEMINI_MODELS } from '../shared/constants'
+import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS, GEMINI_MODELS, WORK_COACH_GEMINI_LITE } from '../shared/constants'
 import type { AssistantMode, PerceptionMode, ScreenMetadata } from '../shared/types'
 import type { Playbook, Conversation } from '../shared/types'
 
@@ -217,7 +225,9 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
         : aiProvider === 'gemini'
           ? getSetting<string>('geminiModel') || DEFAULT_SETTINGS.geminiModel
       : getSetting<string>('selectedModel') || DEFAULT_SETTINGS.selectedModel
-    const systemPrompt = args.coachMode
+    const assistantMode = (getSetting<string>('assistantMode') || DEFAULT_SETTINGS.assistantMode) as AssistantMode
+    const effectiveCoachMode = args.coachMode || assistantMode === 'work'
+    const systemPrompt = effectiveCoachMode
       ? getSetting<string>('coachSystemPrompt')
       : getSetting<string>('systemPrompt')
 
@@ -225,16 +235,34 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     let screenScreenshot: string | undefined
     let useVision = false
     let screenMetadata: ScreenMetadata = args.screenMetadata ?? {}
+    let workProblemProfile: ReturnType<typeof resolveWorkProblemProfile> | undefined
     let transcript = ''
+
+    const applyWorkProblemVision = () => {
+      if (assistantMode !== 'work' || !screenScreenshot) return
+      useVision = true
+    }
 
     if (typeof args.screenTextOverride === 'string' && args.screenTextOverride.trim()) {
       screenText = args.screenTextOverride.trim()
       screenScreenshot = args.screenshotOverride
       useVision = args.useVisionOverride ?? false
+      if (assistantMode === 'work') {
+        workProblemProfile = resolveWorkProblemProfile(
+          screenText,
+          screenMetadata,
+          extractScreenContext(screenText, assistantMode, screenMetadata).kind
+        )
+        applyWorkProblemVision()
+      }
     } else if (args.includeScreen) {
       try {
         const fullAuto = getSetting<boolean>('fullAutoMode')
-        const smartCrop = getSetting<boolean>('smartCrop') || false
+        const assistantModeCapture = (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
+        const smartCrop =
+          assistantModeCapture === 'work'
+            ? true
+            : (getSetting<boolean>('smartCrop') ?? DEFAULT_SETTINGS.smartCrop)
         const perceptionMode = fullAuto
           ? ('ocr' as PerceptionMode)
           : ((getSetting<string>('perceptionMode') || DEFAULT_SETTINGS.perceptionMode) as PerceptionMode)
@@ -248,6 +276,14 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
           textSource: capture.textSource,
           displayCount: capture.displayCount
         }
+        workProblemProfile = resolveWorkProblemProfile(
+          screenText,
+          screenMetadata,
+          extractScreenContext(screenText, assistantMode, screenMetadata).kind
+        )
+        if (assistantMode === 'work') {
+          applyWorkProblemVision()
+        }
       } catch (err: unknown) {
         console.warn('[Specter] Screen capture failed:', err)
       }
@@ -258,14 +294,14 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       transcript = getTranscript()
     }
 
-    const assistantMode = (getSetting<string>('assistantMode') || DEFAULT_SETTINGS.assistantMode) as AssistantMode
+    const userOverlayFeedback = isUserConfusionFeedback(args.query ?? '')
 
     const playbooks = getSetting<Playbook[]>('playbooks') || []
     const activePlaybooks = filterPlaybooksForMode(playbooks, assistantMode)
     const playbookContext = buildPlaybookContext(activePlaybooks)
 
     let coachInstantReply: string | undefined
-    let coachUserMessage = args.coachMode
+    let coachUserMessage = effectiveCoachMode
       ? (() => {
           if (args.activeTabMode) {
             const coachReq = resolveCoachRequest(screenText, assistantMode, screenMetadata)
@@ -282,19 +318,45 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
           userQuery: args.query
         })
 
-    if (args.coachMode && assistantMode === 'work' && !coachInstantReply) {
-      const thread = getWorkCoachThread(screenText, screenMetadata)
-      coachUserMessage = appendWorkCoachContext(coachUserMessage, thread)
+    let workCoachCodeReview = evaluateWorkCoachCodeReview(screenText, screenMetadata)
+    if (effectiveCoachMode && assistantMode === 'work' && userOverlayFeedback) {
+      workCoachCodeReview = { status: 'unchanged', replyMode: 'stuck-reexplain' }
     }
+
+    if (effectiveCoachMode && assistantMode === 'work' && !coachInstantReply) {
+      const thread = getWorkCoachThread(screenText, screenMetadata)
+      const session = loadWorkCoachSession()
+      const stuckRetryCount = session?.stuckRetryCount ?? 0
+      coachUserMessage = appendWorkCoachContext(coachUserMessage, thread, {
+        replyMode: workCoachCodeReview.replyMode,
+        codeReviewStatus: workCoachCodeReview.status,
+        suggestedSnippet: session?.lastSuggestedSnippet,
+        stepSummary: session?.lastCoachStepSummary,
+        screenText,
+        metadata: screenMetadata,
+        profile: workProblemProfile,
+        userOverlayQuery: userOverlayFeedback ? args.query : undefined,
+        stuckRetryCount:
+          workCoachCodeReview.replyMode === 'stuck-reexplain' ? stuckRetryCount + 1 : stuckRetryCount
+      })
+    }
+
+    const workCoachEscalation =
+      effectiveCoachMode && assistantMode === 'work' && !coachInstantReply
+        ? resolveWorkCoachEscalation(
+            workCoachCodeReview.replyMode,
+            loadWorkCoachSession()?.stuckRetryCount ?? 0
+          )
+        : null
 
     const userMessage = coachUserMessage
 
     const journalEnabled = getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
     // Coach = screen-only; journal/playbooks caused HOI4/mod noise on unrelated tabs (e.g. YouTube)
     const journalContext =
-      args.coachMode ? '' : journalEnabled ? getRecentJournalContext(30) : ''
+      effectiveCoachMode ? '' : journalEnabled ? getRecentJournalContext(30) : ''
 
-    const contextParts = args.coachMode
+    const contextParts = effectiveCoachMode
       ? [userMessage]
       : [playbookContext, journalContext, userMessage].filter(Boolean)
     const fullUserMessage = contextParts.join('\n\n')
@@ -303,7 +365,7 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [
       {
         role: 'system',
-        content: args.coachMode
+        content: effectiveCoachMode
           ? buildCoachSystemPrompt(systemPrompt, assistantMode)
           : buildSystemPrompt(systemPrompt)
       }
@@ -325,6 +387,26 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       : fullUserMessage
     messages.push({ role: 'user', content: finalUserContent })
 
+    const systemContent = messages[0]?.content ?? ''
+    let coachDebugPath: string | null = null
+    if (effectiveCoachMode && isCoachDebugEnabled() && shouldRunCoachVerboseLogging()) {
+      coachDebugPath = writeCoachDebug({
+        ts: new Date().toISOString(),
+        query: args.query ?? '',
+        assistantMode,
+        effectiveCoachMode,
+        screenMetadata,
+        screenTextChars: screenText.length,
+        screenText,
+        workCoachCodeReview,
+        workCoachEscalation,
+        workProblemKind: workProblemProfile?.kind,
+        useVision: useVision && !coachInstantReply,
+        systemPrompt: systemContent,
+        userPrompt: finalUserContent
+      })
+    }
+
     // Estimate prompt tokens for cost tracking
     const promptTokens = estimateTokens(messages.map(m => m.content).join(' '))
     let completionContent = ''
@@ -337,8 +419,13 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
         }
       },
       onDone: () => {
-        if (args.coachMode && assistantMode === 'work' && completionContent.trim()) {
-          updateWorkCoachThread(screenText, screenMetadata, completionContent)
+        if (coachDebugPath && completionContent.trim()) {
+          patchCoachDebugCompletion(coachDebugPath, completionContent)
+        }
+        if (effectiveCoachMode && assistantMode === 'work' && completionContent.trim()) {
+          updateWorkCoachThread(screenText, screenMetadata, completionContent, {
+            triggerReview: workCoachCodeReview.status
+          })
         }
         if (!event.sender.isDestroyed()) {
           const completionTokens = estimateTokens(completionContent)
@@ -378,9 +465,64 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       }
     }
 
-    if (args.coachMode && coachInstantReply) {
+    if (effectiveCoachMode && coachInstantReply) {
       streamCallbacks.onChunk(coachInstantReply)
       streamCallbacks.onDone()
+      return
+    }
+
+    if (workCoachEscalation !== null && geminiApiKey.trim()) {
+      const finishWorkCoach = (modelLabel: string, primaryContent: string) => {
+        if (coachDebugPath && completionContent.trim()) {
+          patchCoachDebugCompletion(coachDebugPath, completionContent)
+        }
+        if (effectiveCoachMode && assistantMode === 'work' && primaryContent.trim()) {
+          updateWorkCoachThread(screenText, screenMetadata, primaryContent, {
+            triggerReview: workCoachCodeReview.status
+          })
+        }
+        if (!event.sender.isDestroyed()) {
+          const completionTokens = estimateTokens(completionContent)
+          event.sender.send(IPC_CHANNELS.AI_STREAM_DONE, {
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+            totalCost: 0,
+            model: modelLabel
+          })
+        }
+      }
+
+      try {
+        const isVisualQuiz = workProblemProfile?.kind === 'visual-quiz'
+        if (isVisualQuiz && useVision && screenScreenshot && !coachInstantReply) {
+          await streamGeminiVisionCompletion(
+            messages,
+            WORK_COACH_GEMINI_LITE,
+            geminiApiKey,
+            screenScreenshot,
+            streamCallbacks,
+            800
+          )
+          finishWorkCoach(WORK_COACH_GEMINI_LITE, completionContent)
+          return
+        }
+
+        const result = await runWorkCoachEscalation({
+          messages,
+          geminiApiKey,
+          useVision: useVision && !coachInstantReply,
+          screenScreenshot,
+          event: event.sender
+        })
+        if (result.completionContent.trim()) {
+          completionContent = result.completionContent
+        }
+        finishWorkCoach(result.modelLabel, result.primaryPanelContent)
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Work coach failed'
+        streamCallbacks.onError(message)
+      }
       return
     }
 
@@ -623,6 +765,22 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
 
   ipcMain.on(IPC_CHANNELS.OVERLAY_COLLAPSE, () => {
     showOverlayPill()
+  })
+
+  ipcMain.on(IPC_CHANNELS.OVERLAY_FIT_CONTENT, (_event, payload: unknown) => {
+    if (typeof payload !== 'object' || payload === null) return
+    const p = payload as Record<string, unknown>
+    const mode = p.mode
+    const width = p.width
+    const height = p.height
+    if (mode !== 'pill' && mode !== 'panel' && mode !== 'work-triple') return
+    if (typeof width !== 'number' || typeof height !== 'number') return
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return
+    fitOverlayToContent({
+      mode,
+      width: Math.max(0, Math.min(4000, width)),
+      height: Math.max(0, Math.min(4000, height))
+    })
   })
 
   // Shell — open URLs in external browser (validated in preload)

@@ -13,9 +13,12 @@ export function loadEnvFiles(): void {
  */
 export function bootstrapSettingsFromEnv(): void {
   const geminiKey = process.env.GEMINI_API_KEY?.trim()
-  if (geminiKey && !(getSetting<string>('geminiApiKey') || '').trim()) {
-    setSetting('geminiApiKey', geminiKey)
-    console.info('[Specter] Loaded Gemini API key from GEMINI_API_KEY')
+  if (geminiKey) {
+    const stored = (getSetting<string>('geminiApiKey') || '').trim()
+    if (stored !== geminiKey) {
+      setSetting('geminiApiKey', geminiKey)
+      console.info('[Specter] Synced Gemini API key from GEMINI_API_KEY')
+    }
   }
 
   const openrouterKey = process.env.OPENROUTER_API_KEY?.trim()

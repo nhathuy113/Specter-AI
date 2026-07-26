@@ -101,11 +101,11 @@ export function resolvePerceptionPlan(
 
 export function buildVisionUserTask(assistantUserMessage: string): string {
   if (assistantUserMessage.trim()) {
-    return `${assistantUserMessage}\n\n[NOTE] A screenshot of the user's screen is attached. Use both the text above and the image.`
+    return `${assistantUserMessage}\n\n[NOTE] A cropped screenshot of the user's active work window is attached. Use the image as primary context; OCR above is supplementary only.`
   }
   return [
     '[TASK]',
-    'Look at the attached screenshot of the user screen.',
+    'Look at the attached cropped screenshot of the user work window.',
     'Recommend 1-3 concrete next steps based on what you see.',
     'Never claim you clicked or typed anything.'
   ].join('\n')

@@ -6,9 +6,12 @@ export const IPC_CHANNELS = {
   HIDE_OVERLAY: 'overlay:hide',
   OVERLAY_READY: 'overlay:ready',
   OVERLAY_SET_OPACITY: 'overlay:set-opacity',
+  /** macOS NSVisualEffectView — real desktop blur, not CSS opacity. */
+  OVERLAY_SET_GLASS_MODE: 'overlay:set-glass-mode',
   OVERLAY_SET_PILL_MODE: 'overlay:set-pill-mode',
   OVERLAY_EXPAND: 'overlay:expand',
   OVERLAY_COLLAPSE: 'overlay:collapse',
+  OVERLAY_FIT_CONTENT: 'overlay:fit-content',
 
   // AI
   AI_CHECK_CONFIG: 'ai:check-config',
@@ -18,6 +21,9 @@ export const IPC_CHANNELS = {
   AI_STREAM_DONE: 'ai:stream-done',
   AI_STREAM_ERROR: 'ai:stream-error',
   AI_CANCEL: 'ai:cancel',
+  AI_COACH_TRIPLE_START: 'ai:coach-triple-start',
+  AI_COACH_TRIPLE_PANEL: 'ai:coach-triple-panel',
+  AI_COACH_TRIPLE_DONE: 'ai:coach-triple-done',
 
   // Screen capture
   SCREEN_CAPTURE: 'screen:capture',

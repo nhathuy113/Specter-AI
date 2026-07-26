@@ -35,7 +35,7 @@ describe('CoachTriggerEvaluator', () => {
 
     const result = evaluator.evaluate({
       ocrText: SCREEN_A,
-      nowMs: 2_000,
+      nowMs: 12_000,
       cooldownSec: 10,
       isStreaming: false
     })
@@ -118,15 +118,174 @@ describe('CoachTriggerEvaluator', () => {
     }
   })
 
-  it('triggers on IDE content in general mode', () => {
-    const result = evaluator.evaluate({
-      ocrText: 'Cursor\nfunction buildApp() {\n  return true\n}',
+  it('skips duplicate fingerprint for same leetcode page in work mode within cooldown', () => {
+    const meta = { appName: 'Work: Built-in', windowTitle: 'pinned' }
+    const screenA = '4. Median of Two Sorted Arrays\nHard\nGiven two sorted arrays nums1 and nums2'
+    const screenB = '4. Median of Two Sorted Arrays\nHard\nSubmissions 5678\nGiven two sorted arrays nums1 and nums2'
+
+    const first = evaluator.evaluate({
+      ocrText: screenA,
       nowMs: 1_000,
       cooldownSec: 10,
       isStreaming: false,
-      assistantMode: 'general'
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
+    })
+    expect(first.action).toBe('trigger')
+    evaluator.recordCoachTriggered(1_000, first.fingerprint)
+
+    const duringCooldown = evaluator.evaluate({
+      ocrText: screenB,
+      nowMs: 5_000,
+      cooldownSec: 10,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
     })
 
-    expect(result.action).toBe('trigger')
+    expect(duringCooldown.action).toBe('skip')
+    if (duringCooldown.action === 'skip') {
+      expect(duringCooldown.reason).toBe('cooldown')
+    }
+  })
+
+  it('re-triggers work coach when user has not changed code after cooldown', () => {
+    const meta = { appName: 'Work: Built-in', windowTitle: 'pinned' }
+    const screen =
+      '4. Median of Two Sorted Arrays\nHard\ndef findMedianSortedArrays(nums1, nums2):\n    pass'
+
+    const first = evaluator.evaluate({
+      ocrText: screen,
+      nowMs: 1_000,
+      cooldownSec: 10,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
+    })
+    expect(first.action).toBe('trigger')
+    evaluator.recordCoachTriggered(1_000, first.fingerprint)
+
+    const second = evaluator.evaluate({
+      ocrText: screen,
+      nowMs: 20_000,
+      cooldownSec: 10,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
+    })
+
+    expect(second.action).toBe('trigger')
+    if (second.action === 'trigger') {
+      expect(second.workReplyMode).toBe('stuck-reexplain')
+    }
+  })
+
+  it('triggers immediately for next quiz question within cooldown (new screenshot)', () => {
+    const meta = { appName: 'Google Chrome', windowTitle: '123test' }
+    const q1 = '123test.com\nQuestion 1 of 8\nWhich figure completes the pattern?'
+    const q2 = '123test.com\nQuestion 2 of 8\nWhich figure completes the pattern?'
+
+    const first = evaluator.evaluate({
+      ocrText: q1,
+      nowMs: 1_000,
+      cooldownSec: 45,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle,
+      screenshotBase64: 'screenshot-q1-base64'
+    })
+    expect(first.action).toBe('trigger')
+    evaluator.recordCoachTriggered(1_000, first.fingerprint)
+
+    const second = evaluator.evaluate({
+      ocrText: q2,
+      nowMs: 5_000,
+      cooldownSec: 45,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle,
+      screenshotBase64: 'screenshot-q2-base64'
+    })
+
+    expect(second.action).toBe('trigger')
+    if (second.action === 'trigger') {
+      expect(second.fingerprint).not.toBe(first.fingerprint)
+    }
+  })
+
+  it('skips duplicate fingerprint for same quiz question in work mode after cooldown', () => {
+    const meta = { appName: 'Work: Built-in', windowTitle: 'pinned' }
+    const screen =
+      '123test.com\nQuestion 1 of 20\nWhich figure completes the pattern?\nRow 1 Box 1'
+
+    const first = evaluator.evaluate({
+      ocrText: screen,
+      nowMs: 1_000,
+      cooldownSec: 5,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle,
+      screenshotBase64: 'same-quiz-frame'
+    })
+    expect(first.action).toBe('trigger')
+    evaluator.recordCoachTriggered(1_000, first.fingerprint)
+
+    const second = evaluator.evaluate({
+      ocrText: screen,
+      nowMs: 20_000,
+      cooldownSec: 5,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle,
+      screenshotBase64: 'same-quiz-frame'
+    })
+
+    expect(second.action).toBe('skip')
+    if (second.action === 'skip') {
+      expect(second.reason).toBe('duplicate-fingerprint')
+    }
+  })
+
+  it('triggers work coach when user edits code on same leetcode page', () => {
+    const meta = { appName: 'Work: Built-in', windowTitle: 'pinned' }
+    const before =
+      '4. Median of Two Sorted Arrays\nHard\ndef findMedianSortedArrays(nums1, nums2):\n    pass'
+    const after =
+      '4. Median of Two Sorted Arrays\nHard\ndef findMedianSortedArrays(nums1, nums2):\n    if len(nums1) > len(nums2):'
+
+    const first = evaluator.evaluate({
+      ocrText: before,
+      nowMs: 1_000,
+      cooldownSec: 10,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
+    })
+    evaluator.recordCoachTriggered(1_000, first.fingerprint)
+
+    const second = evaluator.evaluate({
+      ocrText: after,
+      nowMs: 20_000,
+      cooldownSec: 10,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
+    })
+
+    expect(second.action).toBe('trigger')
+    if (second.action === 'trigger') {
+      expect(second.workReplyMode).toBe('code-review')
+      expect(second.fingerprint).not.toBe(first.fingerprint)
+    }
   })
 })

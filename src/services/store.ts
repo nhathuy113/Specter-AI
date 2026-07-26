@@ -125,7 +125,33 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
     if (v === null || v === undefined) return true
     if (typeof v !== 'object') return false
     const s = v as Record<string, unknown>
-    return typeof s.sessionKey === 'string' && typeof s.thread === 'string' && typeof s.updatedAt === 'number'
+    const base =
+      typeof s.sessionKey === 'string' && typeof s.thread === 'string' && typeof s.updatedAt === 'number'
+    if (!base) return false
+    if (s.codeFingerprintAtLastCoach !== undefined && typeof s.codeFingerprintAtLastCoach !== 'string') {
+      return false
+    }
+    if (s.stuckRetryCount !== undefined && typeof s.stuckRetryCount !== 'number') {
+      return false
+    }
+    if (s.cursorCoachReply !== undefined && typeof s.cursorCoachReply !== 'string') {
+      return false
+    }
+    if (s.lastSuggestedSnippet !== undefined && typeof s.lastSuggestedSnippet !== 'string') {
+      return false
+    }
+    if (s.lastCoachStepSummary !== undefined && typeof s.lastCoachStepSummary !== 'string') {
+      return false
+    }
+    if (
+      s.lastReviewOutcome !== undefined &&
+      s.lastReviewOutcome !== 'unchanged' &&
+      s.lastReviewOutcome !== 'approved' &&
+      s.lastReviewOutcome !== 'rejected'
+    ) {
+      return false
+    }
+    return true
   }
 }
 

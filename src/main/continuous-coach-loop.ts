@@ -10,7 +10,7 @@ import { createCoachTickRunner } from '../services/coach-tick-runner'
 import { getSetting } from '../services/store'
 import { captureScreenText } from './screen-capture'
 import { appendJournalFromCapture, resolveJournalFocusFingerprint } from '../services/activity-journal-capture'
-import { syncOverlayBackgroundMode } from './overlay-window'
+import { syncOverlayBackgroundMode, shouldRunCoachAutoUi, shouldRunWorkJournal } from './overlay-window'
 
 let coachTimer: ReturnType<typeof setInterval> | null = null
 let coachOverlay: BrowserWindow | null = null
@@ -42,7 +42,11 @@ export async function runCoachTickForTest(deps: Partial<{
   const assistantMode = deps.assistantMode ?? (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
   const captureScreen = deps.captureScreen ?? (async () => {
     const fullAuto = getSetting<boolean>('fullAutoMode')
-    const smartCrop = getSetting<boolean>('smartCrop') || false
+    const assistantMode = (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
+    const smartCrop =
+      assistantMode === 'work'
+        ? true
+        : (getSetting<boolean>('smartCrop') ?? DEFAULT_SETTINGS.smartCrop)
     const perceptionMode = fullAuto
       ? 'ocr'
       : ((getSetting<string>('perceptionMode') as PerceptionMode) ?? DEFAULT_SETTINGS.perceptionMode)
@@ -63,14 +67,20 @@ async function coachTimerTick(): Promise<void> {
     return
   }
 
-  const cooldownSec = getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec
+  const cooldownSec =
+    (getSetting<string>('assistantMode') as AssistantMode) === 'work' && shouldRunCoachAutoUi()
+      ? Math.max(
+          getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec,
+          DEFAULT_SETTINGS.workCoachCooldownSec
+        )
+      : getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec
   const journalIntervalSec =
     getSetting<number>('journalIntervalSec') || DEFAULT_SETTINGS.journalIntervalSec
   const result = await runCoachTickForTest({ cooldownSec })
 
   const journalEnabled =
     getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
-  if (journalEnabled && result.capture?.text?.trim()) {
+  if (journalEnabled && result.capture?.text?.trim() && shouldRunWorkJournal()) {
     const now = Date.now()
     const fp = resolveJournalFocusFingerprint(result.capture) ?? ''
     const focusChanged = fp !== '' && fp !== lastJournalFingerprint
@@ -89,13 +99,13 @@ async function coachTimerTick(): Promise<void> {
     }
   }
 
-  if (result.action === 'trigger' && !coachOverlay.isDestroyed()) {
+  if (result.action === 'trigger' && !coachOverlay.isDestroyed() && shouldRunCoachAutoUi()) {
     coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
       screenText: result.screenText,
       timestamp: Date.now(),
       appName: result.capture?.appName,
       windowTitle: result.capture?.windowTitle,
-      useVision: result.capture?.useVision,
+      useVision: !!result.capture?.screenshot,
       screenshot: result.capture?.screenshot
     })
   }

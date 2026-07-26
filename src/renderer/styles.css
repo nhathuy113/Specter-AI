@@ -4,6 +4,7 @@
 
 :root {
   --specter-glass-strength: 1;
+  --specter-glass-tint: 1;
 }
 
 /* ── Theme system ── */
@@ -96,62 +97,613 @@
   background: var(--specter-surface-hover);
 }
 
-/* Overlay panel — readable first; subtle frost at edges only */
+/* Overlay renderer — transparent shell; panel provides macOS glass */
+html.specter-overlay-root,
+html.specter-overlay-root body,
+html.specter-overlay-root #root {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Overlay panel — CSS glass fallback (Windows/Linux; macOS uses native vibrancy) */
+html:not(.specter-native-glass) .specter-overlay-panel {
+  backdrop-filter: var(--specter-backdrop-blur, blur(40px) saturate(190%));
+  -webkit-backdrop-filter: var(--specter-backdrop-blur, blur(40px) saturate(190%));
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, calc(0.14 * var(--specter-glass-tint, 1))) 0%,
+    rgba(255, 255, 255, calc(0.06 * var(--specter-glass-tint, 1))) 42%,
+    rgba(30, 24, 48, calc(0.28 * var(--specter-glass-tint, 1))) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, calc(0.22 * var(--specter-glass-tint, 1)));
+  border-top-color: rgba(255, 255, 255, calc(0.34 * var(--specter-glass-tint, 1)));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, calc(0.16 * var(--specter-glass-tint, 1))),
+    0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+/* macOS NSVisualEffectView — blur comes from OS; CSS only adds thin frost tint */
+html.specter-native-glass .specter-overlay-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(255, 255, 255, calc(0.08 * var(--specter-glass-tint, 1)));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top-color: rgba(255, 255, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 12px 40px rgba(0, 0, 0, 0.16);
+}
+
 .specter-overlay-panel {
-  backdrop-filter: blur(10px) saturate(120%);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  background: rgba(12, 12, 18, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-top-color: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+  border-radius: 16px;
+}
+
+html:not(.specter-native-glass) .specter-overlay-chrome {
+  background: rgba(255, 255, 255, calc(0.07 * var(--specter-glass-tint, 1)));
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+html.specter-native-glass .specter-overlay-chrome {
+  background: rgba(255, 255, 255, calc(0.05 * var(--specter-glass-tint, 1)));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .specter-overlay-chrome {
-  background: rgba(16, 16, 24, 0.98);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .specter-overlay-messages {
-  background: rgba(8, 8, 14, 0.98);
+  background: transparent;
+}
+
+.specter-coach-triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  flex: 1;
+  min-height: 280px;
+}
+
+.specter-coach-triple-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+html:not(.specter-native-glass) .specter-coach-triple-col {
+  background: rgba(255, 255, 255, calc(0.05 * var(--specter-glass-tint, 1)));
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+
+html.specter-native-glass .specter-coach-triple-col {
+  background: rgba(255, 255, 255, calc(0.06 * var(--specter-glass-tint, 1)));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.specter-coach-triple-col--violet {
+  border-color: rgba(124, 58, 237, 0.28);
+}
+
+.specter-coach-triple-col--sky {
+  border-color: rgba(14, 165, 233, 0.28);
+}
+
+.specter-coach-triple-col--emerald {
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.specter-coach-triple-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.specter-coach-triple-col--violet .specter-coach-triple-col-header {
+  color: rgba(167, 139, 250, 0.95);
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.specter-coach-triple-col--sky .specter-coach-triple-col-header {
+  color: rgba(125, 211, 252, 0.95);
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.specter-coach-triple-col--emerald .specter-coach-triple-col-header {
+  color: rgba(52, 211, 153, 0.95);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.specter-coach-triple-col-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.specter-coach-triple-col-title span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.specter-coach-triple-col-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.specter-coach-triple-col-body {
+  flex: 1;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+  overflow-y: auto;
+  min-height: 180px;
+}
+
+.specter-coach-triple-placeholder {
+  display: block;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.28);
+  font-style: italic;
+}
+
+.specter-coach-triple-col-body p {
+  margin: 0 0 0.5em;
+}
+
+.specter-coach-triple-col-body code {
+  font-size: 10px;
+}
+
+.specter-coach-triple-spinner {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(167, 139, 250, 0.35);
+  border-top-color: rgba(167, 139, 250, 0.95);
+  animation: spin 0.8s linear infinite;
+}
+
+html.specter-triple-coach .specter-overlay-panel {
+  min-width: 0;
+}
+
+html.specter-triple-coach .specter-overlay-messages {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+html.specter-triple-coach .specter-work-guide-empty {
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+html:not(.specter-native-glass) .specter-overlay-input {
+  background: rgba(255, 255, 255, calc(0.05 * var(--specter-glass-tint, 1)));
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+html.specter-native-glass .specter-overlay-input {
+  background: rgba(255, 255, 255, calc(0.04 * var(--specter-glass-tint, 1)));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .specter-overlay-input {
-  background: rgba(16, 16, 24, 0.98);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 [data-theme="light"] .specter-overlay-panel {
-  background: rgba(252, 252, 254, 0.96);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.68) 100%
+  );
   border-color: rgba(0, 0, 0, 0.10);
 }
 
 [data-theme="light"] .specter-overlay-messages {
-  background: rgba(255, 255, 255, 0.98);
+  background: transparent;
 }
 
 [data-theme="light"] .specter-overlay-chrome,
 [data-theme="light"] .specter-overlay-input {
-  background: rgba(248, 248, 252, 0.98);
+  background: rgba(255, 255, 255, 0.55);
 }
 
-[data-theme="glass"] .specter-overlay-panel,
-[data-theme="dark"] .specter-overlay-panel {
-  background: rgba(12, 12, 18, 0.94);
+html:not(.specter-native-glass) [data-theme="glass"] .specter-overlay-panel,
+html:not(.specter-native-glass) [data-theme="dark"] .specter-overlay-panel {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, calc(0.14 * var(--specter-glass-tint, 1))) 0%,
+    rgba(255, 255, 255, calc(0.06 * var(--specter-glass-tint, 1))) 42%,
+    rgba(30, 24, 48, calc(0.28 * var(--specter-glass-tint, 1))) 100%
+  );
 }
 
-.specter-pill-glass {
+html:not(.specter-native-glass) .specter-pill-glass {
   backdrop-filter: blur(36px) saturate(190%);
   -webkit-backdrop-filter: blur(36px) saturate(190%);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, calc(0.42 * var(--specter-glass-strength, 0.95))) 0%,
-    rgba(55, 48, 80, calc(0.88 * var(--specter-glass-strength, 0.95))) 100%
+    rgba(255, 255, 255, calc(0.42 * var(--specter-glass-tint, 0.95))) 0%,
+    rgba(55, 48, 80, calc(0.88 * var(--specter-glass-tint, 0.95))) 100%
   );
-  border: 1px solid rgba(255, 255, 255, calc(0.50 * var(--specter-glass-strength, 0.95)));
-  border-top-color: rgba(255, 255, 255, calc(0.70 * var(--specter-glass-strength, 0.95)));
+  border: 1px solid rgba(255, 255, 255, calc(0.50 * var(--specter-glass-tint, 0.95)));
+  border-top-color: rgba(255, 255, 255, calc(0.70 * var(--specter-glass-tint, 0.95)));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, calc(0.35 * var(--specter-glass-strength, 0.95))),
+    inset 0 1px 0 rgba(255, 255, 255, calc(0.35 * var(--specter-glass-tint, 0.95))),
     0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+html.specter-native-glass .specter-pill-glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(255, 255, 255, calc(0.14 * var(--specter-glass-tint, 1)));
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-top-color: rgba(255, 255, 255, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.specter-pill-glass {
+  border-radius: 9999px;
+}
+
+/* Work coach guide — empty state + pill */
+.specter-work-pill {
+  min-width: 0;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.specter-work-pill-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+}
+
+.specter-work-pill-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.2;
+}
+
+.specter-work-pill-sub {
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.38);
+  padding-left: 14px;
+}
+
+.specter-work-guide {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  animation: fadeIn 0.35s ease-out;
+}
+
+.specter-work-guide-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.specter-work-guide-mode {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.specter-work-guide-mode--active {
+  border-color: rgba(124, 58, 237, 0.45);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(16, 185, 129, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.12);
+}
+
+.specter-work-guide-mode-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: rgba(167, 139, 250, 0.95);
+  background: rgba(124, 58, 237, 0.18);
+}
+
+.specter-work-guide-mode-icon--muted {
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.specter-work-guide-mode-body {
+  min-width: 0;
+}
+
+.specter-work-guide-mode-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  margin-bottom: 2px;
+}
+
+.specter-work-guide-mode-body p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.specter-work-guide-mode-tag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.specter-work-guide-mode-tag--live {
+  color: rgba(167, 139, 250, 0.95);
+  background: rgba(124, 58, 237, 0.22);
+}
+
+.specter-work-guide-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .specter-work-guide-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.specter-work-guide-card {
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  background: rgba(255, 255, 255, calc(0.05 * var(--specter-glass-strength, 1)));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.specter-work-guide-card--tips {
+  border-color: rgba(16, 185, 129, 0.22);
+  background: rgba(255, 255, 255, calc(0.04 * var(--specter-glass-strength, 1)));
+}
+
+.specter-work-guide-card-title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(167, 139, 250, 0.9);
+}
+
+.specter-work-guide-card--tips .specter-work-guide-card-title {
+  color: rgba(52, 211, 153, 0.9);
+}
+
+.specter-work-guide-flow {
+  padding: 8px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.specter-work-guide-flow--secondary {
+  margin-bottom: 0;
+}
+
+.specter-work-guide-flow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.specter-work-guide-flow-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.specter-work-guide-flow-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: rgba(167, 139, 250, 0.9);
+  background: rgba(124, 58, 237, 0.16);
+}
+
+.specter-work-guide-flow--secondary .specter-work-guide-flow-badge {
+  color: rgba(52, 211, 153, 0.9);
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.specter-work-guide-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 2px;
+}
+
+.specter-work-guide-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.specter-work-guide-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 700;
+  color: rgba(167, 139, 250, 0.95);
+  background: rgba(124, 58, 237, 0.2);
+  flex-shrink: 0;
+}
+
+.specter-work-guide-flow--secondary .specter-work-guide-step-num {
+  color: rgba(52, 211, 153, 0.95);
+  background: rgba(16, 185, 129, 0.18);
+}
+
+.specter-work-guide-step-text {
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+}
+
+.specter-work-guide-step-arrow {
+  width: 10px;
+  height: 10px;
+  color: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+}
+
+.specter-work-guide-note {
+  margin: 8px 0 0;
+  font-size: 9px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.specter-work-guide-tips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.specter-work-guide-tip {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.specter-work-guide-tip-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  color: rgba(52, 211, 153, 0.9);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.specter-work-guide-tip-title {
+  margin: 0 0 1px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.specter-work-guide-tip-body {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.specter-work-guide-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.specter-work-guide-footer-sep {
+  opacity: 0.4;
+}
+
+.specter-work-guide-kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 2px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Animations */

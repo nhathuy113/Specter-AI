@@ -103,6 +103,12 @@ async function streamGeminiCompletionInternal(
       return
     }
     const message = err instanceof Error ? err.message : 'Unknown Gemini API error'
+    if (message.includes('401')) {
+      callbacks.onError(
+        'Gemini 401 — API key sai hoặc cũ. Lấy key mới tại aistudio.google.com/apikey (bắt đầu AIzaSy…) và cập nhật GEMINI_API_KEY trong .env, rồi restart app.'
+      )
+      return
+    }
     callbacks.onError(message)
   } finally {
     currentAbortController = null
