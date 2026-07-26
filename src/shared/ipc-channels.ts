@@ -56,6 +56,8 @@ export const IPC_CHANNELS = {
   HOTKEY_TOGGLE_OVERLAY: 'hotkey:toggle-overlay',
   HOTKEY_ACTIVE_TAB: 'hotkey:active-tab',
   WORK_AUTO_TOGGLED: 'work-auto:toggled',
+  WORK_AUTO_GET_STATUS: 'work-auto:get-status',
+  WORK_AUTO_TOGGLE: 'work-auto:toggle',
   HOTKEY_REREGISTER: 'hotkey:reregister',
 
   // Dashboard

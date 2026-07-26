@@ -103,7 +103,7 @@ export const WORK_PROBLEM_SPECS: WorkProblemSpec[] = [
     formatContinue: WORK_COACH_QUIZ_CONTINUATION_VI,
     taskHints: [
       'Screenshot attached — pick the answer from the image.',
-      'Reply in Vietnamese: **Đáp án:** (number 1–8 if choices shown) + **Tại sao:** 1–2 sentences.',
+      'Reply in Vietnamese with **Đáp án**, **Quy luật**, **Tại sao** — concrete, 5–8 lines max.',
       'No code. Do not ask the user to figure it out themselves.'
     ],
     forceVision: true,

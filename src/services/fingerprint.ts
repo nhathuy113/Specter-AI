@@ -4,11 +4,6 @@ import { extractEditorCodeFingerprint, workSessionKey } from './work-coach-sessi
 import { resolveWorkProblemProfile } from './work-problem-profile'
 import type { ScreenMetadata } from '../shared/types'
 
-export function hashScreenshotBase64(base64?: string): string {
-  if (!base64?.trim()) return ''
-  return createHash('sha256').update(base64.trim()).digest('hex').slice(0, 16)
-}
-
 const RELATIVE_TIME_PATTERN = /\b\d+\s+(?:seconds?|minutes?|hours?|days?|weeks?|months?)\s+ago\.?\b/gi
 
 /**
@@ -47,17 +42,12 @@ export function fingerprintWorkCoachScreen(rawText: string, metadata?: ScreenMet
 }
 
 /** Work mode trigger key: session topic + editor code snapshot (typing = new step). */
-export function fingerprintWorkCoachProgress(
-  rawText: string,
-  metadata?: ScreenMetadata,
-  screenshotHash?: string
-): string {
+export function fingerprintWorkCoachProgress(rawText: string, metadata?: ScreenMetadata): string {
   const session = workSessionKey(rawText, metadata)
   const screenKind = extractScreenContext(rawText, 'work', metadata).kind
   const profile = resolveWorkProblemProfile(rawText, metadata, screenKind)
 
   if (!profile.snippetTracking) {
-    if (screenshotHash) return `${session}:${screenshotHash}`
     return session
   }
 

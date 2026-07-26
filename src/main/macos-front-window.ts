@@ -131,3 +131,23 @@ export function getMacOSFrontWindowInfo(): MacOSFrontWindowInfo | null {
     return null
   }
 }
+
+/** All visible browser windows — used when IDE/Specter is front on external monitor. */
+export function getMacOSBrowserWindows(): MacOSFrontWindowInfo[] {
+  if (process.platform !== 'darwin') return []
+
+  try {
+    const scriptPath = path.join(__dirname, '../../scripts/macos-front-window.swift')
+    const raw = execFileSync('swift', [scriptPath, '--list-browsers'], {
+      encoding: 'utf-8',
+      timeout: 5000
+    })
+    return raw
+      .split('\n')
+      .map((line) => parseMacOSFrontWindowLine(line))
+      .filter((w): w is MacOSFrontWindowInfo => w !== null)
+  } catch (err) {
+    console.warn('[Specter] Swift browser-window scan failed:', err)
+    return []
+  }
+}

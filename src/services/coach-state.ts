@@ -1,10 +1,6 @@
 import type { AssistantMode } from '../shared/types'
 import { extractScreenContext } from './context-router'
-import {
-  fingerprintCoachScreenText,
-  fingerprintWorkCoachProgress,
-  hashScreenshotBase64
-} from './fingerprint'
+import { fingerprintCoachScreenText, fingerprintWorkCoachProgress } from './fingerprint'
 import { evaluateWorkCoachCodeReview } from './work-coach-session'
 import { resolveWorkProblemProfile } from './work-problem-profile'
 
@@ -21,6 +17,7 @@ export type CoachEvaluateResult =
       action: 'trigger'
       fingerprint: string
       screenText: string
+      screenChanged: boolean
       workReplyMode?: 'normal' | 'stuck-reexplain' | 'snippet-rejected' | 'code-review'
     }
 
@@ -33,12 +30,12 @@ export interface CoachEvaluateInput {
   displayCount?: number
   appName?: string
   windowTitle?: string
-  screenshotBase64?: string
 }
 
 export class CoachTriggerEvaluator {
   private lastFingerprint = ''
   private lastCoachAtMs = 0
+  private readingPauseUntilMs = 0
 
   evaluate(input: CoachEvaluateInput): CoachEvaluateResult {
     const mode = input.assistantMode ?? 'general'
@@ -52,25 +49,28 @@ export class CoachTriggerEvaluator {
       return { action: 'skip', reason: 'non-actionable-screen', fingerprint: '' }
     }
 
-    const screenshotHash = hashScreenshotBase64(input.screenshotBase64)
     const profile =
       mode === 'work' ? resolveWorkProblemProfile(input.ocrText, meta, ctx.kind) : undefined
     const visualProgress = !!(profile && !profile.snippetTracking)
 
     const fingerprint =
       mode === 'work'
-        ? fingerprintWorkCoachProgress(input.ocrText, meta, screenshotHash)
+        ? fingerprintWorkCoachProgress(input.ocrText, meta)
         : fingerprintCoachScreenText(input.ocrText)
 
     if (!fingerprint) {
       return { action: 'skip', reason: 'empty-text', fingerprint }
     }
 
-    const isNewVisualScreen =
-      visualProgress && fingerprint !== this.lastFingerprint && this.lastFingerprint !== ''
+    const screenChanged =
+      this.lastFingerprint !== '' && fingerprint !== this.lastFingerprint
 
-    if (input.isStreaming && !isNewVisualScreen) {
+    if (input.isStreaming) {
       return { action: 'skip', reason: 'streaming', fingerprint }
+    }
+
+    if (this.readingPauseUntilMs > 0 && input.nowMs < this.readingPauseUntilMs) {
+      return { action: 'skip', reason: 'cooldown', fingerprint }
     }
 
     if (fingerprint === this.lastFingerprint && this.lastFingerprint !== '') {
@@ -86,7 +86,7 @@ export class CoachTriggerEvaluator {
     const withinCooldown =
       this.lastCoachAtMs > 0 && input.nowMs - this.lastCoachAtMs < cooldownMs
 
-    if (withinCooldown && !(visualProgress && fingerprint !== this.lastFingerprint)) {
+    if (withinCooldown) {
       return { action: 'skip', reason: 'cooldown', fingerprint }
     }
 
@@ -106,6 +106,7 @@ export class CoachTriggerEvaluator {
         action: 'trigger',
         fingerprint,
         screenText: input.ocrText.trim(),
+        screenChanged,
         workReplyMode
       }
     }
@@ -113,7 +114,8 @@ export class CoachTriggerEvaluator {
     return {
       action: 'trigger',
       fingerprint,
-      screenText: input.ocrText.trim()
+      screenText: input.ocrText.trim(),
+      screenChanged
     }
   }
 
@@ -122,8 +124,13 @@ export class CoachTriggerEvaluator {
     this.lastCoachAtMs = nowMs
   }
 
+  recordReadingPause(nowMs: number, pauseSec: number): void {
+    this.readingPauseUntilMs = nowMs + Math.max(0, pauseSec) * 1000
+  }
+
   reset(): void {
     this.lastFingerprint = ''
     this.lastCoachAtMs = 0
+    this.readingPauseUntilMs = 0
   }
 }

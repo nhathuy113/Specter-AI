@@ -45,6 +45,8 @@ describe('ux behavior gate', () => {
     expect(overlay).toContain('shouldRunCoachVerboseLogging')
     expect(overlay).toContain('isOverlayExpandedForCoach')
     expect(coachLoop).toContain('shouldRunCoachAutoUi()')
+    expect(coachLoop).toContain('recordTrigger: uiReady')
+    expect(coachLoop).toContain('flushCoachTickOnExpand')
     expect(coachLoop).toContain('shouldRunWorkJournal()')
     expect(journalLoop).toContain('shouldRunWorkJournal()')
   })
@@ -79,14 +81,15 @@ describe('ux behavior gate', () => {
     expect(DEFAULT_WORK_COACH_SYSTEM_PROMPT).toContain('CROP of the active work window')
   })
 
-  it('keeps dual-panel coach IPC for work expand (2 Gemini models)', () => {
+  it('keeps adaptive coach IPC for work expand (Gemini + optional Cursor)', () => {
     expect(IPC_CHANNELS.AI_COACH_TRIPLE_START).toBe('ai:coach-triple-start')
     expect(IPC_CHANNELS.AI_COACH_TRIPLE_PANEL).toBe('ai:coach-triple-panel')
     expect(IPC_CHANNELS.AI_COACH_TRIPLE_DONE).toBe('ai:coach-triple-done')
     const runner = readFileSync(resolve(__dirname, '../services/work-coach-runner.ts'), 'utf-8')
     expect(runner).toContain('WORK_COACH_GEMINI_LITE')
     expect(runner).toContain('WORK_COACH_GEMINI_36')
-    expect(runner).not.toContain('completeCursorWorkCoach')
+    expect(runner).toContain('includeCursor')
+    expect(runner).toContain('completeCursorWorkCoach')
   })
 
   it('keeps coach screen-only (no journal bleed in coach mode)', () => {

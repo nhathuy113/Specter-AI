@@ -96,9 +96,9 @@ export default function WorkCoachGuidePanel() {
           </div>
           <div className="specter-work-guide-mode-body">
             <div className="specter-work-guide-mode-title">
-              Panel mở <span className="specter-work-guide-mode-tag specter-work-guide-mode-tag--live">2 cột</span>
+              Panel mở <span className="specter-work-guide-mode-tag specter-work-guide-mode-tag--live">2–3 cột</span>
             </div>
-            <p>Lite · 3.6 — coach song song, mỗi cột một model Gemini.</p>
+            <p>Bài code (LeetCode) → Lite · 3.6 · Cursor SDK. Quiz / bài học / toán → chỉ 2 cột Gemini.</p>
           </div>
         </div>
       </div>

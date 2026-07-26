@@ -15,13 +15,14 @@ import { DEFAULT_SETTINGS } from '../shared/constants'
 import {
   resolveScreenshotScreenIndexForDisplay,
   type DisplayInfo,
-  type SmartCropPlan
+  type SmartCropPlan,
+  displayForWindow
 } from '../services/display-capture'
 import { resolveSmartCapturePlan } from '../services/smart-capture'
 import { planPinnedWorkDisplay, workAreaCaptureActive } from '../services/work-area-capture'
 import { getOverlayWindow, isOverlayBackgroundWatch, releaseForegroundAfterBackgroundWork, showOverlay } from './overlay-window'
-import { getMacOSFrontWindowInfo, isSpecterForeground, rememberMacOSForegroundForRestore } from './macos-front-window'
-import { resolveWorkWindowForCrop } from './work-window-memory'
+import { getMacOSFrontWindowInfo, getMacOSBrowserWindows, isSpecterForeground, rememberMacOSForegroundForRestore } from './macos-front-window'
+import { rememberWorkWindow, resolveWorkWindowForCrop } from './work-window-memory'
 
 let isCapturing = false
 
@@ -327,10 +328,19 @@ async function captureFromPlan(plan: SmartCropPlan): Promise<Buffer> {
  *
  * @param activeWindowOnly - If true, attempt to crop to the active window's bounds
  */
+function buildCoachMetadataText(appName?: string, windowTitle?: string): string {
+  return [
+    appName ? `[ACTIVE APP] ${appName}` : '',
+    windowTitle ? `[WINDOW] ${windowTitle}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 export async function captureScreenText(
   activeWindowOnly = false,
   perceptionMode?: PerceptionMode,
-  opts: { skipAccessibility?: boolean } = {}
+  opts: { skipAccessibility?: boolean; coachVision?: boolean } = {}
 ): Promise<ScreenCaptureResult> {
   if (isCapturing) {
     throw new Error('Screen capture already in progress')
@@ -348,7 +358,14 @@ export async function captureScreenText(
   if (activeWindowOnly) {
     if (process.platform === 'darwin') {
       const liveFront = getMacOSFrontWindowInfo()
-      frontWindowMeta = resolveWorkWindowForCrop(liveFront)
+      rememberWorkWindow(liveFront)
+      const primaryBounds = screen.getPrimaryDisplay().bounds
+      const browserWindows = getMacOSBrowserWindows()
+      frontWindowMeta = resolveWorkWindowForCrop(liveFront, {
+        browserWindows,
+        primaryBounds
+      })
+      if (frontWindowMeta) rememberWorkWindow(frontWindowMeta)
       if (frontWindowMeta) {
         activeWindowBounds = {
           x: frontWindowMeta.x,
@@ -357,9 +374,10 @@ export async function captureScreenText(
           height: frontWindowMeta.height,
           title: frontWindowMeta.windowTitle || frontWindowMeta.appName
         }
-        if (liveFront && isSpecterForeground(liveFront) && frontWindowMeta !== liveFront) {
+        if (liveFront && liveFront !== frontWindowMeta) {
+          const cropDisplay = displayForWindow(frontWindowMeta, listElectronDisplays())
           console.info(
-            `[Specter] Crop using remembered work window: ${frontWindowMeta.appName} | ${frontWindowMeta.windowTitle || '(no title)'}`
+            `[Specter] Crop browser (not front app): ${frontWindowMeta.appName} | ${frontWindowMeta.windowTitle || '(no title)'} | display: ${cropDisplay?.label ?? '?'}`
           )
         }
       }
@@ -377,20 +395,34 @@ export async function captureScreenText(
     const displayCount = displays.length
     const workEnabled = getSetting<boolean>('workAreaCaptureEnabled')
     const workDisplayId = getSetting<number>('workAreaDisplayId')
+    const assistantMode = getSetting<string>('assistantMode') ?? DEFAULT_SETTINGS.assistantMode
+    const skipPinnedForWorkCrop = activeWindowOnly && assistantMode === 'work'
     const pinnedPlan =
+      !skipPinnedForWorkCrop &&
       workAreaCaptureActive(workEnabled, workDisplayId) &&
       planPinnedWorkDisplay(displays, workDisplayId)
 
-    if (pinnedPlan) {
+    if (pinnedPlan && !activeWindowOnly) {
       imgBuffer = await captureFromPlan(pinnedPlan)
       console.info(`[Specter] Work area capture: ${pinnedPlan.display.label} (full display)`)
     } else if (activeWindowOnly) {
       const plan = resolveSmartCapturePlan(activeWindowBounds, displays)
       if (plan) {
         imgBuffer = await captureFromPlan(plan)
+        if (plan.type === 'window-crop') {
+          console.info(
+            `[Specter] Smart crop: ${frontWindowMeta?.appName ?? 'window'} | ${frontWindowMeta?.windowTitle || activeWindowBounds?.title || '(no title)'}`
+          )
+        } else {
+          console.info(`[Specter] Smart crop fallback: ${plan.display.label} (full display)`)
+        }
       } else {
         imgBuffer = await captureDisplayScreenshot()
+        console.info('[Specter] Smart crop unavailable — full primary display')
       }
+    } else if (pinnedPlan) {
+      imgBuffer = await captureFromPlan(pinnedPlan)
+      console.info(`[Specter] Work area capture: ${pinnedPlan.display.label} (full display)`)
     } else {
       imgBuffer = await captureDisplayScreenshot()
     }
@@ -408,22 +440,40 @@ export async function captureScreenText(
       mode === 'vision' || opts.skipAccessibility
         ? null
         : captureAccessibilityText()
-    const ocrText = await ocrInWorker(imgBuffer)
-    const perception = resolvePerceptionPlan(mode, ocrText, axResult)
 
     const appName = pinnedPlan
       ? `Work: ${pinnedPlan.display.label}`
-      : (perception.appName ?? frontWindowMeta?.appName)
+      : (frontWindowMeta?.appName ?? axResult?.appName)
     const windowTitle = pinnedPlan
       ? 'pinned-work-display'
-      : (perception.windowTitle ?? frontWindowMeta?.windowTitle)
+      : (frontWindowMeta?.windowTitle ?? axResult?.windowTitle)
+
+    let ocrText = ''
+    let fingerprintText: string | undefined
+    let textSource: ScreenCaptureResult['textSource'] = 'none'
+    let modelText = ''
+    let useVision = false
+
+    if (opts.coachVision) {
+      fingerprintText = await ocrInWorker(imgBuffer)
+      modelText = buildCoachMetadataText(appName, windowTitle)
+      textSource = 'metadata'
+      useVision = true
+    } else {
+      ocrText = await ocrInWorker(imgBuffer)
+      const perception = resolvePerceptionPlan(mode, ocrText, axResult)
+      modelText = perception.text
+      textSource = perception.textSource
+      useVision = perception.useVision
+    }
 
     return {
-      text: perception.text,
+      text: modelText,
+      fingerprintText,
       screenshot: base64,
       timestamp: Date.now(),
-      textSource: perception.textSource,
-      useVision: perception.useVision,
+      textSource,
+      useVision,
       appName,
       windowTitle,
       displayCount

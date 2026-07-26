@@ -17,9 +17,11 @@ import {
   updateWorkCoachThread
 } from '../services/work-coach-session'
 import { resolveWorkCoachEscalation } from '../services/work-coach-escalation'
-import { runWorkCoachEscalation } from '../services/work-coach-runner'
+import { runWorkCoachEscalation, runWorkCoachQuizVision } from '../services/work-coach-runner'
+import { markQuizUserActivity } from '../services/work-coach-quiz-escalation'
+import { workSessionKey } from '../services/work-coach-session'
 import { isUserConfusionFeedback } from '../services/work-coach-snippet'
-import { resolveWorkProblemProfile } from '../services/work-problem-profile'
+import { resolveWorkProblemProfile, shouldUseCursorWorkCoach } from '../services/work-problem-profile'
 import { extractScreenContext } from '../services/context-router'
 import { isCoachDebugEnabled, patchCoachDebugCompletion, writeCoachDebug } from '../services/coach-debug'
 import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
@@ -29,12 +31,13 @@ import { syncHourlyReportLoop, stopHourlyReportLoop } from './hourly-report-loop
 import { syncGameCaptureLoop, stopGameCaptureLoop } from './game-capture-loop'
 import { checkAiConfig } from '../services/ai-config'
 import { captureScreenText, captureScreenOnly } from './screen-capture'
-import { syncContinuousCoach, stopContinuousCoach, setOverlayCoachStreaming } from './continuous-coach-loop'
+import { syncContinuousCoach, stopContinuousCoach, setOverlayCoachStreaming, flushCoachTickOnExpand } from './continuous-coach-loop'
+import { getWorkAutoModeStatus, toggleWorkAutoMode } from './work-auto-mode'
 import { transcribeAudio, getTranscript, checkWhisperConfig } from './audio-capture'
 import { createDashboardWindow } from './dashboard-window'
 import { setOverlayOpacity, expandOverlayWindow, showOverlayPill, shouldRunCoachVerboseLogging, fitOverlayToContent } from './overlay-window'
 import { reRegisterHotkeys } from './hotkey-manager'
-import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS, GEMINI_MODELS, WORK_COACH_GEMINI_LITE } from '../shared/constants'
+import { APP_VERSION, DEFAULT_MODELS, DEFAULT_SETTINGS, GEMINI_MODELS } from '../shared/constants'
 import type { AssistantMode, PerceptionMode, ScreenMetadata } from '../shared/types'
 import type { Playbook, Conversation } from '../shared/types'
 
@@ -200,6 +203,10 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     if (!isValidQuery(args?.query)) {
       event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, 'Invalid query.')
       return
+    }
+
+    if (args.query?.trim() && args.query.trim() !== '[Coach auto]') {
+      markQuizUserActivity()
     }
 
     if (args.messageHistory && !isValidMessageHistory(args.messageHistory)) {
@@ -496,15 +503,16 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
       try {
         const isVisualQuiz = workProblemProfile?.kind === 'visual-quiz'
         if (isVisualQuiz && useVision && screenScreenshot && !coachInstantReply) {
-          await streamGeminiVisionCompletion(
+          const sessionKey = workSessionKey(screenText, screenMetadata)
+          const result = await runWorkCoachQuizVision({
             messages,
-            WORK_COACH_GEMINI_LITE,
             geminiApiKey,
             screenScreenshot,
-            streamCallbacks,
-            800
-          )
-          finishWorkCoach(WORK_COACH_GEMINI_LITE, completionContent)
+            event: event.sender,
+            sessionKey
+          })
+          completionContent = result.completionContent
+          finishWorkCoach(result.modelLabel, result.primaryPanelContent)
           return
         }
 
@@ -512,7 +520,10 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
           messages,
           geminiApiKey,
           useVision: useVision && !coachInstantReply,
+          includeCursor: workProblemProfile ? shouldUseCursorWorkCoach(workProblemProfile) : false,
           screenScreenshot,
+          screenText,
+          screenMetadata,
           event: event.sender
         })
         if (result.completionContent.trim()) {
@@ -657,6 +668,11 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
         setSetting('journalSmartCrop', true)
       }
       syncContinuousCoach(overlayWindow)
+      if (!overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send(IPC_CHANNELS.WORK_AUTO_TOGGLED, {
+          enabled: getWorkAutoModeStatus().enabled
+        })
+      }
     }
     if (key === 'activityJournal' || key === 'journalIntervalSec' || key === 'journalSmartCrop' || key === 'fullAutoMode') {
       syncActivityJournal()
@@ -740,6 +756,16 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
     setOverlayCoachStreaming(!!args?.streaming)
   })
 
+  ipcMain.handle(IPC_CHANNELS.WORK_AUTO_GET_STATUS, () => getWorkAutoModeStatus())
+
+  ipcMain.handle(IPC_CHANNELS.WORK_AUTO_TOGGLE, () => {
+    if (overlayWindow.isDestroyed()) {
+      return { enabled: false }
+    }
+    const enabled = toggleWorkAutoMode(overlayWindow)
+    return { enabled }
+  })
+
   ipcMain.on(IPC_CHANNELS.APP_QUIT, () => {
     stopAutoCapture()
     stopContinuousCoach()
@@ -761,6 +787,7 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
 
   ipcMain.on(IPC_CHANNELS.OVERLAY_EXPAND, () => {
     expandOverlayWindow(true)
+    flushCoachTickOnExpand()
   })
 
   ipcMain.on(IPC_CHANNELS.OVERLAY_COLLAPSE, () => {

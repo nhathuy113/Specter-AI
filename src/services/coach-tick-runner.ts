@@ -8,6 +8,8 @@ export interface CoachTickDeps {
   isStreaming: boolean
   assistantMode: AssistantMode
   captureScreen: () => Promise<ScreenCaptureResult>
+  /** When false, evaluate trigger but do not consume fingerprint (overlay still pill). */
+  recordTrigger?: boolean
 }
 
 export type CoachTickResult = CoachEvaluateResult & {
@@ -24,8 +26,10 @@ export function createCoachTickRunner(evaluator: CoachTriggerEvaluator) {
       return { action: 'skip', reason: 'empty-text', fingerprint: '' }
     }
 
+    const ocrForFingerprint = capture.fingerprintText?.trim() || capture.text
+
     const result = evaluator.evaluate({
-      ocrText: capture.text,
+      ocrText: ocrForFingerprint,
       nowMs: deps.nowMs,
       cooldownSec: deps.cooldownSec,
       isStreaming: deps.isStreaming,
@@ -33,11 +37,12 @@ export function createCoachTickRunner(evaluator: CoachTriggerEvaluator) {
       displayCount: capture.displayCount,
       appName: capture.appName,
       windowTitle: capture.windowTitle,
-      screenshotBase64: capture.screenshot
     })
 
     if (result.action === 'trigger') {
-      evaluator.recordCoachTriggered(deps.nowMs, result.fingerprint)
+      if (deps.recordTrigger !== false) {
+        evaluator.recordCoachTriggered(deps.nowMs, result.fingerprint)
+      }
       return { ...result, capturedText: capture.text, capture }
     }
 

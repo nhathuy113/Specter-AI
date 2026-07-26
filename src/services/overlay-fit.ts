@@ -1,8 +1,5 @@
 import type { Rectangle } from 'electron'
-import {
-  WORK_COACH_TRIPLE_MIN_WIDTH,
-  OVERLAY_DEFAULTS
-} from '../shared/constants'
+import { WORK_COACH_DUAL_MIN_WIDTH, OVERLAY_DEFAULTS } from '../shared/constants'
 import {
   computeExpandedOverlayBounds,
   computePillOverlayBounds,
@@ -44,7 +41,7 @@ export function resolveOverlayFitBounds(
     return computePillOverlayBounds(display, width, height)
   }
 
-  const minWidth = req.mode === 'work-triple' ? WORK_COACH_TRIPLE_MIN_WIDTH : 380
+  const minWidth = req.mode === 'work-triple' ? WORK_COACH_DUAL_MIN_WIDTH : 380
   const maxWidth = area.width
   const minHeight = req.mode === 'work-triple' ? 440 : 320
   const maxHeight = Math.floor(area.height * 0.92)

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resolveAssistantRequest } from './context-router'
-import { shouldForceWorkCoachVision } from './work-problem-profile'
-import { resolveWorkProblemProfile } from './work-problem-profile'
+import { resolveWorkProblemProfile, shouldForceWorkCoachVision, shouldUseCursorWorkCoach } from './work-problem-profile'
 
 describe('work-problem-profile', () => {
   it('detects visual quiz from 123test screen', () => {
@@ -27,12 +26,21 @@ describe('work-problem-profile', () => {
     expect(req.workProblem?.kind).toBe('visual-quiz')
     expect(req.userMessage).toContain('[PROBLEM] visual-quiz')
     expect(req.userMessage).toContain('Screenshot attached')
-    expect(req.userMessage).toContain('[OCR — supplementary only]')
+    expect(req.userMessage).not.toContain('[OCR — supplementary only]')
   })
 
   it('forces vision whenever screenshot exists', () => {
     const profile = resolveWorkProblemProfile('leetcode', {}, 'browser')
     expect(shouldForceWorkCoachVision(profile, true)).toBe(true)
     expect(shouldForceWorkCoachVision(profile, false)).toBe(false)
+  })
+
+  it('uses Cursor SDK only for coding problems', () => {
+    const quiz = resolveWorkProblemProfile('123test\nQuestion 1 of 8', {}, 'browser')
+    const leetcode = resolveWorkProblemProfile('leetcode\nMedian of Two Sorted Arrays', {}, 'browser')
+    const lecture = resolveWorkProblemProfile('youtube.com\nPHÂN TÍCH GDP', {}, 'browser')
+    expect(shouldUseCursorWorkCoach(quiz)).toBe(false)
+    expect(shouldUseCursorWorkCoach(lecture)).toBe(false)
+    expect(shouldUseCursorWorkCoach(leetcode)).toBe(true)
   })
 })

@@ -93,9 +93,11 @@ export interface AudioStatus {
 
 export interface ScreenCaptureResult {
   text: string
+  /** Local OCR for dedup/fingerprint only — never sent to the model when coachVision is set. */
+  fingerprintText?: string
   screenshot?: string // base64 png
   timestamp: number
-  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none' | 'metadata'
   useVision?: boolean
   appName?: string
   windowTitle?: string

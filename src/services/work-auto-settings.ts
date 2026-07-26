@@ -31,10 +31,10 @@ export function buildWorkAutoEnablePatch(existing: {
     activityJournal: true,
     smartCrop: true,
     journalSmartCrop: true,
-    workAreaCaptureEnabled: true
+    workAreaCaptureEnabled: false
   }
 
-  if (!existing.workAreaDisplayId) {
+  if (!existing.workAreaDisplayId && existing.workAreaCaptureEnabled) {
     patch.workAreaDisplayId = 0
   }
   if (!existing.detectIntervalSec) {

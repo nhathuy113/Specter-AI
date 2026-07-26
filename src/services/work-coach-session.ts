@@ -28,6 +28,8 @@ export interface WorkCoachSessionState {
   updatedAt: number
   codeFingerprintAtLastCoach?: string
   stuckRetryCount?: number
+  /** Cached Cursor SDK reply (coding sessions only). */
+  cursorCoachReply?: string
   /** Last fenced code block from coach — approve/reject detection. */
   lastSuggestedSnippet?: string
   /** One-line summary of the step being taught — do not skip on re-explain. */
@@ -152,6 +154,7 @@ export function updateWorkCoachThread(
     updatedAt: Date.now(),
     codeFingerprintAtLastCoach: codeFp,
     stuckRetryCount: trigger === 'unchanged' ? (saved?.stuckRetryCount ?? 0) + 1 : 0,
+    cursorCoachReply: trigger === 'unchanged' ? saved?.cursorCoachReply : undefined,
     lastSuggestedSnippet: (snippets[0] ?? saved?.lastSuggestedSnippet)?.slice(0, 2000),
     lastCoachStepSummary: extractCoachStepSummary(assistantReply) || saved?.lastCoachStepSummary,
     lastReviewOutcome:
@@ -167,6 +170,25 @@ export function updateWorkCoachThread(
   }
   saveWorkCoachSession(next)
   return next
+}
+
+/** Persist Cursor reply — coding sessions only. */
+export function saveWorkCoachCursorReply(
+  screenText: string,
+  metadata: ScreenMetadata | undefined,
+  reply: string
+): void {
+  const key = workSessionKey(screenText, metadata)
+  const saved = loadWorkCoachSession()
+  const base: WorkCoachSessionState =
+    saved?.sessionKey === key
+      ? saved
+      : { sessionKey: key, thread: '', updatedAt: Date.now() }
+  saveWorkCoachSession({
+    ...base,
+    cursorCoachReply: reply.slice(0, 8000),
+    updatedAt: Date.now()
+  })
 }
 
 export type WorkCoachReplyMode = 'normal' | 'stuck-reexplain' | 'snippet-rejected' | 'code-review'

@@ -47,6 +47,11 @@ export function shouldForceWorkCoachVision(_profile: WorkProblemProfile, hasScre
   return hasScreenshot
 }
 
+/** Cursor SDK column — coding only (LeetCode / debug). Non-code uses Gemini-only dual panel. */
+export function shouldUseCursorWorkCoach(profile: WorkProblemProfile): boolean {
+  return profile.kind === 'coding-debug' || profile.kind === 'coding-exercise'
+}
+
 /** @deprecated Use resolveWorkProblemProfile(...).kind === 'visual-quiz' */
 export function isVisualQuizProfile(profile: WorkProblemProfile): boolean {
   return profile.kind === 'visual-quiz'

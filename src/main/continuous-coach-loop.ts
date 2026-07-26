@@ -23,6 +23,11 @@ const runCoachTick = createCoachTickRunner(evaluator)
 
 export function setOverlayCoachStreaming(streaming: boolean): void {
   overlayCoachStreaming = streaming
+  if (!streaming) {
+    const pollSec =
+      getSetting<number>('detectIntervalSec') || DEFAULT_SETTINGS.detectIntervalSec
+    evaluator.recordReadingPause(Date.now(), pollSec)
+  }
 }
 
 export function resetCoachEvaluator(): void {
@@ -35,11 +40,13 @@ export async function runCoachTickForTest(deps: Partial<{
   isStreaming: boolean
   assistantMode: AssistantMode
   captureScreen: () => Promise<ScreenCaptureResult>
+  recordTrigger?: boolean
 }> = {}) {
   const nowMs = deps.nowMs ?? Date.now()
   const cooldownSec = deps.cooldownSec ?? DEFAULT_SETTINGS.coachCooldownSec
   const isStreaming = deps.isStreaming ?? overlayCoachStreaming
   const assistantMode = deps.assistantMode ?? (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
+  const recordTrigger = deps.recordTrigger
   const captureScreen = deps.captureScreen ?? (async () => {
     const fullAuto = getSetting<boolean>('fullAutoMode')
     const assistantMode = (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
@@ -50,10 +57,14 @@ export async function runCoachTickForTest(deps: Partial<{
     const perceptionMode = fullAuto
       ? 'ocr'
       : ((getSetting<string>('perceptionMode') as PerceptionMode) ?? DEFAULT_SETTINGS.perceptionMode)
-    return captureScreenText(smartCrop, perceptionMode, { skipAccessibility: fullAuto })
+    const coachVision = assistantMode === 'work'
+    return captureScreenText(smartCrop, perceptionMode, {
+      skipAccessibility: fullAuto,
+      coachVision
+    })
   })
 
-  return runCoachTick({ nowMs, cooldownSec, isStreaming, assistantMode, captureScreen })
+  return runCoachTick({ nowMs, cooldownSec, isStreaming, assistantMode, captureScreen, recordTrigger })
 }
 
 async function coachTimerTick(): Promise<void> {
@@ -67,16 +78,15 @@ async function coachTimerTick(): Promise<void> {
     return
   }
 
+  const pollSec = getSetting<number>('detectIntervalSec') || DEFAULT_SETTINGS.detectIntervalSec
   const cooldownSec =
     (getSetting<string>('assistantMode') as AssistantMode) === 'work' && shouldRunCoachAutoUi()
-      ? Math.max(
-          getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec,
-          DEFAULT_SETTINGS.workCoachCooldownSec
-        )
+      ? pollSec
       : getSetting<number>('coachCooldownSec') || DEFAULT_SETTINGS.coachCooldownSec
   const journalIntervalSec =
     getSetting<number>('journalIntervalSec') || DEFAULT_SETTINGS.journalIntervalSec
-  const result = await runCoachTickForTest({ cooldownSec })
+  const uiReady = shouldRunCoachAutoUi()
+  const result = await runCoachTickForTest({ cooldownSec, recordTrigger: uiReady })
 
   const journalEnabled =
     getSetting<boolean>('activityJournal') || getSetting<boolean>('fullAutoMode')
@@ -99,14 +109,15 @@ async function coachTimerTick(): Promise<void> {
     }
   }
 
-  if (result.action === 'trigger' && !coachOverlay.isDestroyed() && shouldRunCoachAutoUi()) {
+  if (result.action === 'trigger' && !coachOverlay.isDestroyed() && uiReady) {
     coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
-      screenText: result.screenText,
+      screenText: result.capture?.text?.trim() || result.screenText,
       timestamp: Date.now(),
       appName: result.capture?.appName,
       windowTitle: result.capture?.windowTitle,
       useVision: !!result.capture?.screenshot,
-      screenshot: result.capture?.screenshot
+      screenshot: result.capture?.screenshot,
+      screenChanged: result.screenChanged
     })
   }
 }
@@ -132,6 +143,12 @@ export function startContinuousCoach(overlayWindow: BrowserWindow, intervalSec: 
   coachTimer = setInterval(() => {
     void coachTimerTick()
   }, clampedInterval * 1000)
+}
+
+/** Run one coach poll immediately after user expands overlay (pill → panel). */
+export function flushCoachTickOnExpand(): void {
+  if (!coachOverlay || coachOverlay.isDestroyed()) return
+  void coachTimerTick()
 }
 
 export function syncContinuousCoach(overlayWindow: BrowserWindow): void {

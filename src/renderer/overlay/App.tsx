@@ -10,7 +10,7 @@ import type { StreamDoneData } from '../../preload/index'
 import type { Message, Conversation, AssistantMode } from '../../shared/types'
 import {
   WORK_COACH_TRIPLE_LABELS,
-  WORK_COACH_TRIPLE_PLACEHOLDERS
+  resolveWorkCoachPanelPlaceholders
 } from '../../shared/constants'
 import { sanitizeCoachDisplayText } from '../../shared/coach-display'
 
@@ -56,13 +56,14 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [historyList, setHistoryList] = useState<Conversation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [autoModeHint, setAutoModeHint] = useState<string | null>(null)
+  const [workAutoEnabled, setWorkAutoEnabled] = useState<boolean | null>(null)
   const [assistantMode, setAssistantMode] = useState<AssistantMode>('general')
   const [coachTriple, setCoachTriple] = useState<{
     labels: string[]
     panels: string[]
     panelDone: boolean[]
   } | null>(null)
+  const [coachChangeNotice, setCoachChangeNotice] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -106,7 +107,7 @@ export default function App() {
   // Auto-capture: latest screen text from main process timer
   const autoCaptureTextRef = useRef<string>('')
   const isCoachQueryRef = useRef(false)
-  const autoModeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const coachChangeNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const coachTripleRef = useRef(coachTriple)
   coachTripleRef.current = coachTriple
 
@@ -119,12 +120,21 @@ export default function App() {
       document.documentElement.classList.remove('specter-triple-coach')
     }
     window.specterAPI?.setCoachStreaming(false)
+    if (coachChangeNoticeTimerRef.current) {
+      clearTimeout(coachChangeNoticeTimerRef.current)
+    }
+    void window.specterAPI?.getSetting<number>('detectIntervalSec').then((sec) => {
+      const pauseMs = Math.max(3, typeof sec === 'number' ? sec : 3) * 1000
+      coachChangeNoticeTimerRef.current = setTimeout(() => {
+        setCoachChangeNotice(null)
+      }, pauseMs)
+    })
   }, [])
 
   const createEmptyWorkCoachTriple = useCallback(() => ({
     labels: [...WORK_COACH_TRIPLE_LABELS],
     panels: WORK_COACH_TRIPLE_LABELS.map(() => ''),
-    panelDone: WORK_COACH_TRIPLE_LABELS.map(() => true)
+    panelDone: WORK_COACH_TRIPLE_LABELS.map(() => false)
   }), [])
 
   const formatCoachReply = useCallback((text: string) => {
@@ -164,10 +174,36 @@ export default function App() {
     Promise.all([
       window.specterAPI?.getSetting<boolean>('fullAutoMode'),
       window.specterAPI?.getSetting<boolean>('continuousCoach'),
-      window.specterAPI?.getSetting<boolean>('activityJournal')
-    ]).then(([fullAuto, coach, journal]) => {
+      window.specterAPI?.getSetting<boolean>('activityJournal'),
+      window.specterAPI?.getWorkAutoStatus()
+    ]).then(([fullAuto, coach, journal, autoStatus]) => {
       if (fullAuto || coach || journal) setIsMinimized(true)
+      if (autoStatus && typeof autoStatus.enabled === 'boolean') {
+        setWorkAutoEnabled(autoStatus.enabled)
+      }
     })
+  }, [])
+
+  const refreshWorkAutoStatus = useCallback(async () => {
+    try {
+      const status = await window.specterAPI?.getWorkAutoStatus()
+      if (status && typeof status.enabled === 'boolean') {
+        setWorkAutoEnabled(status.enabled)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const toggleWorkAuto = useCallback(async () => {
+    try {
+      const result = await window.specterAPI?.toggleWorkAuto()
+      if (result && typeof result.enabled === 'boolean') {
+        setWorkAutoEnabled(result.enabled)
+      }
+    } catch (err) {
+      console.error('[Specter] toggleWorkAuto failed:', err)
+    }
   }, [])
 
   useEffect(() => {
@@ -222,7 +258,7 @@ export default function App() {
     isRecording,
     !!attachedScreenshot,
     setupError,
-    autoModeHint
+    workAutoEnabled
   ])
 
   const refreshSetupStatus = useCallback(async () => {
@@ -582,24 +618,35 @@ export default function App() {
     windowTitle?: string
     useVision?: boolean
     screenshot?: string
+    screenChanged?: boolean
   }) => {
     if (isMinimizedRef.current) return
     if (!payload.screenText.trim()) return
     if (!(await ensureAiConfigured())) return
 
-    if (isStreamingRef.current && isCoachQueryRef.current) {
-      window.specterAPI?.cancelAI()
-      setCoachTriple(null)
-      document.documentElement.classList.remove('specter-triple-coach')
-      setStreamingContent('')
-      setIsStreaming(false)
-      window.specterAPI?.setCoachStreaming(false)
-    } else if (isStreamingRef.current) {
+    if (isStreamingRef.current) {
       return
     }
 
     isCoachQueryRef.current = true
     window.specterAPI?.setCoachStreaming(true)
+
+    if (coachChangeNoticeTimerRef.current) {
+      clearTimeout(coachChangeNoticeTimerRef.current)
+      coachChangeNoticeTimerRef.current = null
+    }
+    setCoachChangeNotice(
+      payload.screenChanged ? 'Có thay đổi màn hình — đang phân tích…' : 'Đang phân tích màn hình…'
+    )
+
+    if (assistantModeRef.current === 'work') {
+      setCoachTriple({
+        labels: ['Gemini 3.1 Flash Lite', 'Gemini 3.6 Flash'],
+        panels: ['', ''],
+        panelDone: [false, false]
+      })
+      document.documentElement.classList.add('specter-triple-coach')
+    }
 
     setError(null)
     setIsStreaming(true)
@@ -660,22 +707,13 @@ export default function App() {
   }, [isCapturing, getMessageHistory, ensureAiConfigured])
 
   const showAutoModeHint = useCallback((enabled: boolean) => {
-    if (autoModeHintTimerRef.current) {
-      clearTimeout(autoModeHintTimerRef.current)
-    }
-    setAutoModeHint(enabled ? 'Auto ON' : 'Auto OFF')
-    autoModeHintTimerRef.current = setTimeout(() => {
-      setAutoModeHint(null)
-      autoModeHintTimerRef.current = null
-    }, 2500)
+    setWorkAutoEnabled(enabled)
   }, [])
 
-  const pillLabel =
-    assistantMode === 'work'
-      ? autoModeHint === 'Auto OFF'
-        ? 'Auto OFF'
-        : 'Work log'
-      : (autoModeHint ?? 'Specter')
+  const workAutoLabel =
+    workAutoEnabled === null ? 'Work' : workAutoEnabled ? 'Auto ON' : 'Auto OFF'
+
+  const pillLabel = assistantMode === 'work' ? workAutoLabel : 'Specter'
 
   /**
    * Submit meeting transcript to AI — called by MeetingRecorder after transcription.
@@ -853,14 +891,17 @@ export default function App() {
         const triple = coachTripleRef.current
         const tripleText = triple
           ? triple.labels
-              .map((label, index) => `## ${label}\n\n${triple.panels[index] || ''}`)
+              .map((label, index) =>
+                triple.panels[index]?.trim() ? `## ${label}\n\n${triple.panels[index]}` : ''
+              )
+              .filter(Boolean)
               .join('\n\n---\n\n')
           : ''
         const raw = tripleText || prev
         const keepInColumnsOnly =
           assistantModeRef.current === 'work' &&
           !isMinimizedRef.current &&
-          (coachTripleRef.current || tripleText)
+          !!tripleText.trim()
         if (raw && !keepInColumnsOnly) {
           const costData = pendingCostRef.current
           const content = isCoachQueryRef.current ? sanitizeCoachDisplayText(raw) : raw
@@ -961,6 +1002,10 @@ export default function App() {
         if (!prev) return prev
         const panels = [...prev.panels]
         const panelDone = [...prev.panelDone]
+        while (panels.length <= index) {
+          panels.push('')
+          panelDone.push(false)
+        }
         panels[index] = content
         panelDone[index] = done
         return { ...prev, panels, panelDone }
@@ -985,7 +1030,7 @@ export default function App() {
       unsubCoachTriplePanel()
       unsubCoachTripleDone()
     }
-  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming, showAutoModeHint])
+  }, [doSubmit, toggleRecording, triggerCoachAdvice, finishCoachStreaming, showAutoModeHint, refreshWorkAutoStatus, toggleWorkAuto])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1005,6 +1050,7 @@ export default function App() {
         <button
           onClick={() => {
             setIsMinimized(false)
+            void refreshWorkAutoStatus()
             window.specterAPI?.expandOverlay()
           }}
           className={`specter-pill-glass group flex items-center gap-2 py-1.5 rounded-full
@@ -1015,19 +1061,19 @@ export default function App() {
         >
           <div className={isWorkPill ? 'specter-work-pill-body' : 'flex items-center gap-2'}>
             <div className={isWorkPill ? 'specter-work-pill-title' : 'flex items-center gap-2'}>
-              <div className={`w-2 h-2 rounded-full animate-pulse shrink-0 ${
-                autoModeHint === 'Auto OFF'
-                  ? 'bg-amber-400'
-                  : isWorkPill
-                    ? 'bg-emerald-400'
-                    : autoModeHint === 'Auto ON'
-                      ? 'bg-emerald-400'
-                      : 'bg-violet-500'
+              <div className={`w-2 h-2 rounded-full shrink-0 ${
+                workAutoEnabled
+                  ? 'bg-emerald-400 animate-pulse'
+                  : workAutoEnabled === false
+                    ? 'bg-amber-400'
+                    : 'bg-white/30'
               }`} />
               <span className={isWorkPill ? '' : 'text-white/80 text-sm font-medium'}>{pillLabel}</span>
             </div>
-            {isWorkPill && autoModeHint !== 'Auto OFF' && (
-              <span className="specter-work-pill-sub">bấm → mở coach</span>
+            {isWorkPill && (
+              <span className="specter-work-pill-sub">
+                {workAutoEnabled ? 'bấm → mở coach' : 'bấm hoặc ⌘/×2 bật Auto'}
+              </span>
             )}
           </div>
           <Maximize2 className={`w-3 h-3 shrink-0 transition-colors ${
@@ -1070,6 +1116,28 @@ export default function App() {
           <span className="text-white/60 text-xs font-medium tracking-wider uppercase">
             Specter AI
           </span>
+          {assistantMode === 'work' && workAutoEnabled !== null && (
+            <button
+              onClick={() => void toggleWorkAuto()}
+              className={`ml-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border transition-colors ${
+                workAutoEnabled
+                  ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                  : 'border-amber-400/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+              }`}
+              title={
+                workAutoEnabled
+                  ? 'Auto ON — poll 3s + coach. Bấm để tắt (hoặc ⌘/ ×2).'
+                  : 'Auto OFF — bấm để bật (hoặc ⌘/ ×2).'
+              }
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  workAutoEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              {workAutoEnabled ? 'AUTO ON' : 'AUTO OFF'}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button
@@ -1248,9 +1316,33 @@ export default function App() {
                 <Sparkles className="w-4 h-4 text-violet-300/80" />
               </div>
               <div className="text-left min-w-0">
-                <h3 className="text-white/80 text-sm font-semibold leading-tight">Work coach · 2 models</h3>
+                <h3 className="text-white/80 text-sm font-semibold leading-tight flex items-center gap-2 flex-wrap">
+                  <span>Work coach · {coachTriple?.labels.length === 3 ? '3 models' : coachTriple ? '2 models' : '2–3 models'}</span>
+                  {workAutoEnabled !== null && (
+                    <button
+                      onClick={() => void toggleWorkAuto()}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold border transition-colors ${
+                        workAutoEnabled
+                          ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-300'
+                          : 'border-amber-400/30 bg-amber-500/10 text-amber-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          workAutoEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                        }`}
+                      />
+                      {workAutoEnabled ? 'Auto ON' : 'Auto OFF'}
+                    </button>
+                  )}
+                </h3>
                 <p className="text-white/35 text-[11px] leading-snug mt-0.5">
-                  Lite · 3.6 Flash — song song mỗi lần capture
+                  {coachChangeNotice ??
+                    (coachTriple?.labels.length === 3
+                      ? 'Lite · 3.6 · Cursor SDK — bài code'
+                      : coachTriple
+                        ? 'Lite · 3.6 Flash — quiz / bài học / toán'
+                        : 'Tự chọn theo loại bài trên màn hình')}
                 </p>
               </div>
             </div>
@@ -1277,7 +1369,7 @@ export default function App() {
                 labels={coachTriple.labels}
                 panels={coachTriple.panels}
                 panelDone={coachTriple.panelDone}
-                placeholders={WORK_COACH_TRIPLE_PLACEHOLDERS}
+                placeholders={resolveWorkCoachPanelPlaceholders(coachTriple.labels.length === 3)}
                 isStreaming={isStreaming}
               />
             )}

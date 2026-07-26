@@ -224,17 +224,18 @@ function buildWorkCoachUserMessage(
   profile?: WorkProblemProfile
 ): string {
   const header = formatMetadataHeader(metadata)
-  const ocrLimit = profile?.snippetTracking ? 3000 : 800
-  const ocrBlock = ctx.focusedText.trim()
-    ? ['', '[OCR — supplementary only]', ctx.focusedText.slice(0, ocrLimit)]
-    : []
+  const ocrLimit = 3000
+  const ocrBlock =
+    profile?.snippetTracking && ctx.focusedText.trim()
+      ? ['', '[OCR — supplementary only]', ctx.focusedText.slice(0, ocrLimit)]
+      : []
 
   return [
     header,
     profile ? `[PROBLEM] ${profile.kind}` : '',
     '',
     '[TASK]',
-    'Screenshot attached — cropped active work window. Use the image as the primary source.',
+    'Screenshot attached — cropped active work window. Read the image and answer.',
     'Reply in Vietnamese with a concrete answer or next step visible on screen.',
     ...(profile?.taskHints.slice(0, 2) ?? []),
     ...ocrBlock

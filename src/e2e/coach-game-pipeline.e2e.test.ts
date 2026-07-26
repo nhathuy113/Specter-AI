@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCoachRequest } from './coach-prompt'
-import { buildPlaybookContext, filterPlaybooksForMode } from './playbook-filter'
-import { mergeAccessibilityAndOcr, resolvePerceptionPlan } from './perception'
-import { scoreCoachReply } from './coach-usefulness'
+import { resolveCoachRequest } from '../services/coach-prompt'
+import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
+import { mergeAccessibilityAndOcr, resolvePerceptionPlan } from '../services/perception'
+import { scoreCoachReply } from '../services/coach-usefulness'
 import type { Playbook } from '../shared/types'
 
 const GAME_LOG_OCR = `
@@ -20,7 +20,7 @@ const MOCK_LLM_GAME_REPLY = `
 * Watch supply lines before pushing again.
 `.trim()
 
-describe('coach pipeline (mock LLM stage)', () => {
+describe('coach game pipeline e2e', () => {
   it('perception → router → playbook → rubric-ready mock reply', () => {
     const ax = { text: 'Hearts of Iron IV', appName: 'HOI4', windowTitle: 'Brussels' }
     const merged = mergeAccessibilityAndOcr(ax, GAME_LOG_OCR)

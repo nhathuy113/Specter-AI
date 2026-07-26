@@ -64,6 +64,8 @@ export interface SpecterAPI {
   onHotkeyToggleAudio: (callback: () => void) => () => void
   onHotkeyToggleOverlay: (callback: () => void) => () => void
   onWorkAutoToggled: (callback: (data: { enabled: boolean }) => void) => () => void
+  getWorkAutoStatus: () => Promise<{ enabled: boolean }>
+  toggleWorkAuto: () => Promise<{ enabled: boolean }>
 
   // Activity journal
   listActivityJournal: () => Promise<Array<{ id: string; minuteKey: string; timestamp: number; appName: string; windowTitle: string; screenKind: string; snippet: string; fingerprint: string; durationSec: number }>>
@@ -81,6 +83,7 @@ export interface SpecterAPI {
     windowTitle?: string
     useVision?: boolean
     screenshot?: string
+    screenChanged?: boolean
   }) => void) => () => void
   setCoachStreaming: (streaming: boolean) => void
 
@@ -286,6 +289,14 @@ const api: SpecterAPI = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.WORK_AUTO_TOGGLED, handler)
   },
 
+  getWorkAutoStatus: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.WORK_AUTO_GET_STATUS) as Promise<{ enabled: boolean }>
+  },
+
+  toggleWorkAuto: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.WORK_AUTO_TOGGLE) as Promise<{ enabled: boolean }>
+  },
+
   listActivityJournal: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_JOURNAL_LIST),
   exportActivityJournal: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_JOURNAL_EXPORT),
   clearActivityJournal: () => ipcRenderer.send(IPC_CHANNELS.ACTIVITY_JOURNAL_CLEAR),
@@ -318,7 +329,8 @@ const api: SpecterAPI = {
             appName: typeof d.appName === 'string' ? d.appName : undefined,
             windowTitle: typeof d.windowTitle === 'string' ? d.windowTitle : undefined,
             useVision: typeof d.useVision === 'boolean' ? d.useVision : undefined,
-            screenshot: typeof d.screenshot === 'string' ? d.screenshot : undefined
+            screenshot: typeof d.screenshot === 'string' ? d.screenshot : undefined,
+            screenChanged: typeof d.screenChanged === 'boolean' ? d.screenChanged : undefined
           })
         }
       }

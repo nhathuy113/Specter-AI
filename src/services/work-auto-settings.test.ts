@@ -13,18 +13,19 @@ describe('work auto settings gate', () => {
     expect(isWorkAutoModeEnabled(false, true)).toBe(false)
   })
 
-  it('enables work coach stack on MacBook pinned capture', () => {
+  it('enables work coach stack with smart crop (not pinned full display)', () => {
     const patch = buildWorkAutoEnablePatch({})
     expect(patch).toMatchObject({
       fullAutoMode: true,
       continuousCoach: true,
       assistantMode: 'work',
       activityJournal: true,
-      workAreaCaptureEnabled: true,
-      workAreaDisplayId: 0,
+      smartCrop: true,
+      workAreaCaptureEnabled: false,
       detectIntervalSec: DEFAULT_SETTINGS.detectIntervalSec,
       coachCooldownSec: DEFAULT_SETTINGS.workCoachCooldownSec
     })
+    expect(patch.workAreaDisplayId).toBeUndefined()
   })
 
   it('raises cooldown to work minimum without lowering user value above it', () => {

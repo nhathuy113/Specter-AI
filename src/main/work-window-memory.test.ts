@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import {
   getRememberedWorkWindow,
+  pickBestBrowserWindow,
   rememberWorkWindow,
   resetWorkWindowMemory,
   resolveWorkWindowForCrop
@@ -17,6 +18,17 @@ const CHROME = {
   windowTitle: '123test.com'
 }
 
+const CURSOR = {
+  x: 0,
+  y: 0,
+  width: 2560,
+  height: 1410,
+  pid: 456,
+  bundleId: 'com.todesktop.230313mzl4w4u92',
+  appName: 'Cursor',
+  windowTitle: 'PERFORMANCE REVIEW'
+}
+
 const SPECTER = {
   x: 100,
   y: 100,
@@ -31,24 +43,48 @@ const SPECTER = {
 describe('work-window-memory', () => {
   beforeEach(() => resetWorkWindowMemory())
 
-  it('remembers non-Specter window', () => {
+  it('remembers Chrome as browser window', () => {
     rememberWorkWindow(CHROME)
     expect(getRememberedWorkWindow()?.appName).toBe('Google Chrome')
   })
 
-  it('ignores Specter foreground', () => {
-    rememberWorkWindow(SPECTER)
-    expect(getRememberedWorkWindow()).toBeNull()
-  })
-
-  it('resolveWorkWindowForCrop falls back when Specter is front', () => {
+  it('does not replace browser with Cursor', () => {
     rememberWorkWindow(CHROME)
-    expect(resolveWorkWindowForCrop(SPECTER)).toEqual(CHROME)
+    expect(resolveWorkWindowForCrop(CURSOR)?.appName).toBe('Google Chrome')
   })
 
-  it('resolveWorkWindowForCrop prefers live Chrome', () => {
-    rememberWorkWindow({ ...CHROME, windowTitle: 'old tab' })
-    const live = { ...CHROME, windowTitle: 'new tab' }
-    expect(resolveWorkWindowForCrop(live)?.windowTitle).toBe('new tab')
+  it('falls back to browser when Specter is front', () => {
+    rememberWorkWindow(CHROME)
+    expect(resolveWorkWindowForCrop(SPECTER)?.appName).toBe('Google Chrome')
+  })
+
+  it('uses Cursor when no browser remembered', () => {
+    expect(resolveWorkWindowForCrop(CURSOR)?.appName).toBe('Cursor')
+  })
+
+  it('scans browser on primary when Cursor is front on external', () => {
+    const chromeOnPrimary = { ...CHROME, x: 80, y: 40 }
+    const cursorOnExternal = { ...CURSOR, x: 1600, y: 0 }
+    const primaryBounds = { x: 0, y: 0, width: 1440, height: 900 }
+
+    const picked = resolveWorkWindowForCrop(cursorOnExternal, {
+      browserWindows: [chromeOnPrimary],
+      primaryBounds
+    })
+
+    expect(picked?.appName).toBe('Google Chrome')
+    expect(picked?.windowTitle).toContain('123test')
+  })
+
+  it('prefers quiz title when multiple browsers exist', () => {
+    const quiz = { ...CHROME, windowTitle: '123test.com IQ Test' }
+    const other = {
+      ...CHROME,
+      x: 200,
+      y: 200,
+      windowTitle: 'Gmail',
+      pid: 124
+    }
+    expect(pickBestBrowserWindow([other, quiz])?.windowTitle).toContain('123test')
   })
 })

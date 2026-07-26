@@ -184,7 +184,7 @@ describe('CoachTriggerEvaluator', () => {
     }
   })
 
-  it('triggers immediately for next quiz question within cooldown (new screenshot)', () => {
+  it('triggers on next quiz question after poll cooldown (not during)', () => {
     const meta = { appName: 'Google Chrome', windowTitle: '123test' }
     const q1 = '123test.com\nQuestion 1 of 8\nWhich figure completes the pattern?'
     const q2 = '123test.com\nQuestion 2 of 8\nWhich figure completes the pattern?'
@@ -192,35 +192,73 @@ describe('CoachTriggerEvaluator', () => {
     const first = evaluator.evaluate({
       ocrText: q1,
       nowMs: 1_000,
-      cooldownSec: 45,
+      cooldownSec: 3,
       isStreaming: false,
       assistantMode: 'work',
       appName: meta.appName,
-      windowTitle: meta.windowTitle,
-      screenshotBase64: 'screenshot-q1-base64'
+      windowTitle: meta.windowTitle
     })
     expect(first.action).toBe('trigger')
+    if (first.action === 'trigger') {
+      expect(first.screenChanged).toBe(false)
+    }
     evaluator.recordCoachTriggered(1_000, first.fingerprint)
 
-    const second = evaluator.evaluate({
+    const duringCooldown = evaluator.evaluate({
       ocrText: q2,
-      nowMs: 5_000,
-      cooldownSec: 45,
+      nowMs: 2_000,
+      cooldownSec: 3,
       isStreaming: false,
       assistantMode: 'work',
       appName: meta.appName,
-      windowTitle: meta.windowTitle,
-      screenshotBase64: 'screenshot-q2-base64'
+      windowTitle: meta.windowTitle
+    })
+    expect(duringCooldown.action).toBe('skip')
+    if (duringCooldown.action === 'skip') {
+      expect(duringCooldown.reason).toBe('cooldown')
+    }
+
+    const afterCooldown = evaluator.evaluate({
+      ocrText: q2,
+      nowMs: 5_000,
+      cooldownSec: 3,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
+    })
+    expect(afterCooldown.action).toBe('trigger')
+    if (afterCooldown.action === 'trigger') {
+      expect(afterCooldown.screenChanged).toBe(true)
+      expect(afterCooldown.fingerprint).not.toBe(first.fingerprint)
+    }
+  })
+
+  it('skips triggers during reading pause after coach stream ends', () => {
+    const meta = { appName: 'Google Chrome', windowTitle: '123test' }
+    const q2 = '123test.com\nQuestion 2 of 8\nWhich figure completes the pattern?'
+
+    evaluator.recordCoachTriggered(1_000, 'q1-fp')
+    evaluator.recordReadingPause(2_000, 3)
+
+    const duringPause = evaluator.evaluate({
+      ocrText: q2,
+      nowMs: 3_000,
+      cooldownSec: 3,
+      isStreaming: false,
+      assistantMode: 'work',
+      appName: meta.appName,
+      windowTitle: meta.windowTitle
     })
 
-    expect(second.action).toBe('trigger')
-    if (second.action === 'trigger') {
-      expect(second.fingerprint).not.toBe(first.fingerprint)
+    expect(duringPause.action).toBe('skip')
+    if (duringPause.action === 'skip') {
+      expect(duringPause.reason).toBe('cooldown')
     }
   })
 
   it('skips duplicate fingerprint for same quiz question in work mode after cooldown', () => {
-    const meta = { appName: 'Work: Built-in', windowTitle: 'pinned' }
+    const meta = { appName: 'Google Chrome', windowTitle: '123test' }
     const screen =
       '123test.com\nQuestion 1 of 20\nWhich figure completes the pattern?\nRow 1 Box 1'
 
@@ -231,8 +269,7 @@ describe('CoachTriggerEvaluator', () => {
       isStreaming: false,
       assistantMode: 'work',
       appName: meta.appName,
-      windowTitle: meta.windowTitle,
-      screenshotBase64: 'same-quiz-frame'
+      windowTitle: meta.windowTitle
     })
     expect(first.action).toBe('trigger')
     evaluator.recordCoachTriggered(1_000, first.fingerprint)
@@ -244,8 +281,7 @@ describe('CoachTriggerEvaluator', () => {
       isStreaming: false,
       assistantMode: 'work',
       appName: meta.appName,
-      windowTitle: meta.windowTitle,
-      screenshotBase64: 'same-quiz-frame'
+      windowTitle: meta.windowTitle
     })
 
     expect(second.action).toBe('skip')

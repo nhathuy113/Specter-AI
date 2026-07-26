@@ -17,12 +17,33 @@ export const OVERLAY_DEFAULTS = {
 /** Expanded work coach — one column per model. */
 export const WORK_COACH_GEMINI_LITE = 'gemini-3.1-flash-lite'
 export const WORK_COACH_GEMINI_36 = 'gemini-3.6-flash'
-export const WORK_COACH_TRIPLE_MIN_WIDTH = 720
-export const WORK_COACH_TRIPLE_LABELS = ['Gemini 3.1 Flash Lite', 'Gemini 3.6 Flash'] as const
-export const WORK_COACH_TRIPLE_PLACEHOLDERS = [
+export const WORK_COACH_DUAL_MIN_WIDTH = 720
+export const WORK_COACH_TRIPLE_MIN_WIDTH = 960
+export const WORK_COACH_GEMINI_LABELS = ['Gemini 3.1 Flash Lite', 'Gemini 3.6 Flash'] as const
+export const WORK_COACH_CURSOR_LABEL = 'Cursor SDK (auto)' as const
+export const WORK_COACH_GEMINI_PLACEHOLDERS = [
   'Coach Lite — gợi ý từng bước nhỏ, tiết kiệm token.',
   'Coach 3.6 — giải thích sâu hơn khi bài khó.'
 ] as const
+export const WORK_COACH_CURSOR_PLACEHOLDER =
+  'Cursor SDK — agent auto, cần CURSOR_API_KEY trong .env.' as const
+
+/** @deprecated Use resolveWorkCoachPanelLabels(includeCursor) */
+export const WORK_COACH_TRIPLE_LABELS = WORK_COACH_GEMINI_LABELS
+/** @deprecated Use resolveWorkCoachPanelPlaceholders(includeCursor) */
+export const WORK_COACH_TRIPLE_PLACEHOLDERS = WORK_COACH_GEMINI_PLACEHOLDERS
+
+export function resolveWorkCoachPanelLabels(includeCursor: boolean): string[] {
+  return includeCursor
+    ? [...WORK_COACH_GEMINI_LABELS, WORK_COACH_CURSOR_LABEL]
+    : [...WORK_COACH_GEMINI_LABELS]
+}
+
+export function resolveWorkCoachPanelPlaceholders(includeCursor: boolean): string[] {
+  return includeCursor
+    ? [...WORK_COACH_GEMINI_PLACEHOLDERS, WORK_COACH_CURSOR_PLACEHOLDER]
+    : [...WORK_COACH_GEMINI_PLACEHOLDERS]
+}
 
 export const DEFAULT_SYSTEM_PROMPT = `You are a real-time AI copilot for meetings, interviews, and work sessions.
 You can use the user's screen content, transcript, and question as context.
@@ -63,9 +84,30 @@ export const WORK_COACH_QUIZ_SYSTEM_PROMPT = `Bạn giải bài IQ / hình trên
 Trả lời tiếng Việt, ngắn: **Đáp án:** (chọn số 1–8 nếu có lựa chọn) + **Tại sao:** 1–2 câu.
 Không code. Không yêu cầu user tự suy luận thêm.`
 
-export const WORK_COACH_QUIZ_FORMAT_VI = `Trả lời ngắn tiếng Việt:
-**Đáp án:** chọn số / hình cụ thể (1–8 nếu đếm trái→phải, trên→dưới).
-**Tại sao:** 1–2 câu.`
+export const WORK_COACH_QUIZ_FORMAT_VI = `Trả lời tiếng Việt — rõ, dễ đọc:
+**Đáp án:** số/hình cụ thể (đếm ô 1–8: trái→phải, trên→dưới).
+**Quy luật:** 1–2 câu — pattern theo hàng, cột hoặc ô trên hình.
+**Tại sao:** 2–3 câu — áp quy luật vào ô trống / lựa chọn đúng.`
+
+/** 3.6 deep explain when user reads Lite ~5s without moving on. */
+export const WORK_COACH_QUIZ_DEEP_SYSTEM_PROMPT = `Bạn là gia sư IQ — giải thích SÂU HƠN bản Lite (user đọc ~5s chưa chuyển câu, có thể chưa hiểu).
+Nhìn screenshot đính kèm. Trả lời tiếng Việt, KHÔNG lặp lại hướng dẫn format, KHÔNG meta tiếng Anh.
+Chỉ output trực tiếp 3 phần:
+**Đáp án:** (giữ hoặc sửa nếu Lite sai)
+**Giải thích từng bước:** 3–5 gạch đầu dòng — đi từng hàng/cột/ô trên hình.
+**Mẹo:** 1 câu — cách nhận ra pattern này lần sau.`
+
+export const WORK_COACH_QUIZ_DEEP_FORMAT_VI = `Giải thích sâu hơn (user có thể chưa hiểu bản Lite):
+**Đáp án:** (giữ hoặc sửa nếu Lite sai)
+**Giải thích từng bước:** 3–5 gạch đầu dòng — đi từng hàng/cột/ô trên hình.
+**Mẹo:** 1 câu — cách nhận ra pattern này lần sau.`
+
+export const WORK_COACH_QUIZ_DEEP_WAITING_VI =
+  'Lite xong — 5s nữa 3.6 sẽ giải thích chi tiết hơn nếu bạn chưa chuyển câu…'
+
+export const WORK_COACH_QUIZ_LITE_PENDING_VI = 'Đang chờ Lite trả lời…'
+
+export const WORK_COACH_QUIZ_DEEP_DELAY_MS = 5000
 
 /** @deprecated Quiz uses slim prompt — kept for registry alias. */
 export const WORK_COACH_QUIZ_CONTINUATION_VI = `Chốt lại **Đáp án** + **Tại sao** — tiếng Việt, ngắn.`

@@ -6,12 +6,22 @@ const QUIZ_UI =
   /\b(iq test|personality test|non-?verbal|spatial reasoning|matrix reasoning|figure series|which (figure|pattern|option|box|image|answer))\b/i
 const QUIZ_VI = /\b(trắc nghiệm|đáp án|chọn (hình|đáp án|phương án)|câu \d+|bài test)\b/i
 const QUESTION_PROGRESS = /\bquestion\s+\d+\s+of\s+\d+\b/i
+const BROWSER_APP = /\b(chrome|firefox|safari|brave|edge|opera)\b/i
 
 /** IQ / visual quiz / multiple-choice pattern tests — need vision + concrete answer. */
 export function isVisualQuizScreen(screenText: string, metadata?: ScreenMetadata): boolean {
+  const appHaystack = `${metadata?.appName ?? ''} ${metadata?.windowTitle ?? ''}`.toLowerCase()
+  const isBrowser = BROWSER_APP.test(appHaystack)
+  if (!isBrowser) return false
+
   const haystack = [screenText, metadata?.windowTitle ?? '', metadata?.appName ?? ''].join('\n').toLowerCase()
-  if (QUIZ_SITE.test(haystack) || QUIZ_UI.test(haystack) || QUIZ_VI.test(haystack)) return true
-  if (QUESTION_PROGRESS.test(haystack)) return true
+
+  const hasQuestionProgress = QUESTION_PROGRESS.test(haystack)
+  const hasQuizSite = QUIZ_SITE.test(haystack)
+
+  if (hasQuestionProgress || hasQuizSite) return true
+
+  if (QUIZ_UI.test(haystack) || QUIZ_VI.test(haystack)) return true
 
   const lower = screenText.toLowerCase()
   const hasMatrixLanguage =

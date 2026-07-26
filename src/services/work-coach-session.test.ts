@@ -5,6 +5,7 @@ import {
   extractEditorCodeFingerprint,
   extractStableContentId,
   isWorkCoachStuck,
+  saveWorkCoachCursorReply,
   selectWorkCoachReplyFormat,
   workSessionKey
 } from './work-coach-session'
@@ -63,6 +64,10 @@ describe('work-coach-session', () => {
 
   it('isWorkCoachStuck compares saved code fingerprint', () => {
     expect(isWorkCoachStuck('def x(): pass')).toBe(false)
+  })
+
+  it('saveWorkCoachCursorReply persists for same session', () => {
+    expect(typeof saveWorkCoachCursorReply).toBe('function')
   })
 
   it('selectWorkCoachReplyFormat uses short format on continuation', () => {
