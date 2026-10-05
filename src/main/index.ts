@@ -2,6 +2,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOverlay, syncMacAppActivationPolicy } from './overlay-window'
+import { createDashboardWindow } from './dashboard-window'
 import { createTray, destroyTray } from './tray'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -22,6 +23,10 @@ process.on('uncaughtException', (err) => {
   throw err
 })
 
+if (process.platform === 'darwin' && !process.env['ELECTRON_RENDERER_URL']) {
+  app.setActivationPolicy('accessory')
+}
+
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -38,6 +43,9 @@ app.whenReady().then(() => {
   // Watch for shortcut events in dev
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+    if (process.platform === 'darwin' && !process.env['ELECTRON_RENDERER_URL']) {
+      window.on('show', () => syncMacAppActivationPolicy())
+    }
   })
 
   // --- Security: global navigation policy for all web contents ---
@@ -75,16 +83,20 @@ app.whenReady().then(() => {
   // The overlay is already invisible to screen capture via setContentProtection(true)
   // on Windows and type:'panel' on macOS. No additional hiding is needed.
 
-  // Create system tray
-  createTray()
+  // Prod: no menu-bar icon. Dev: Dock icon opens the dashboard.
+  if (process.platform !== 'darwin') {
+    createTray()
+  }
 
-  // macOS: re-create window when dock icon is clicked
   app.on('activate', () => {
+    if (process.env['ELECTRON_RENDERER_URL']) {
+      createDashboardWindow()
+      return
+    }
     if (BrowserWindow.getAllWindows().length === 0) {
       createOverlayWindow()
     } else {
       const ov = getOverlayWindow()
-      // Screen capture can re-activate the app — do not pop overlay during background journal/watch
       if (ov && !isOverlayBackgroundWatch()) showOverlay({ focus: true, force: true })
     }
   })

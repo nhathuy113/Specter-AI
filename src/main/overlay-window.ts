@@ -304,10 +304,15 @@ function applyOverlayBackgroundLayout(win: BrowserWindow, watchEnabled: boolean)
   }
 }
 
-/** Keep regular activation so the panel stays visible, then hide the Dock icon. */
+/** Prod is an accessory app so macOS keeps it out of the Dock. Live dev stays a normal Dock app. */
 export function syncMacAppActivationPolicy(): void {
   if (process.platform !== 'darwin') return
-  app.setActivationPolicy('regular')
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    app.setActivationPolicy('regular')
+    void app.dock?.show()
+    return
+  }
+  app.setActivationPolicy('accessory')
   app.dock?.hide()
 }
 

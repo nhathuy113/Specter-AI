@@ -35,6 +35,7 @@ describe('ux behavior gate', () => {
     expect(src).toContain('showOverlayPill()')
     expect(src).not.toContain('app.setActivationPolicy(\'accessory\')')
     expect(src).toContain('app.dock?.hide()')
+    expect(src).not.toContain('app.dock?.show()')
   })
 
   it('pill logs work only; coach + debug when expanded panel open', () => {
