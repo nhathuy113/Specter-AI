@@ -304,10 +304,11 @@ function applyOverlayBackgroundLayout(win: BrowserWindow, watchEnabled: boolean)
   }
 }
 
-/** Focus steal is handled via showInactive(); keep regular activation so the panel stays visible. */
+/** Keep regular activation so the panel stays visible, then hide the Dock icon. */
 export function syncMacAppActivationPolicy(): void {
   if (process.platform !== 'darwin') return
   app.setActivationPolicy('regular')
+  app.dock?.hide()
 }
 
 /** True when the expanded overlay panel is visible (not pill, not fully hidden). */

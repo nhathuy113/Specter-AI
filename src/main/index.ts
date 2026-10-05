@@ -1,7 +1,7 @@
 // Specter AI — Main process entry point
 import { app, BrowserWindow, shell } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOverlay } from './overlay-window'
+import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOverlay, syncMacAppActivationPolicy } from './overlay-window'
 import { createTray, destroyTray } from './tray'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
@@ -29,6 +29,7 @@ if (!gotLock) {
 }
 
 app.whenReady().then(() => {
+  syncMacAppActivationPolicy()
   bootstrapSettingsFromEnv()
 
   // Set app user model id for Windows
