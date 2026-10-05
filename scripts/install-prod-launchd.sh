@@ -8,8 +8,14 @@ plist="${agents}/${label}.plist"
 uid="$(id -u)"
 domain="gui/${uid}"
 
-mkdir -p "$agents" "$logs"
+mkdir -p "$agents" "$logs" "${HOME}/Library/Application Support/specter-ai"
 chmod +x "${root}/scripts/prod-launch.sh"
+launcher="${HOME}/Library/Application Support/specter-ai/Specter AI"
+cat > "$launcher" <<EOF
+#!/bin/bash
+exec "${root}/scripts/prod-launch.sh"
+EOF
+chmod +x "$launcher"
 
 cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -18,10 +24,13 @@ cat > "$plist" <<EOF
 <dict>
   <key>Label</key>
   <string>${label}</string>
+  <key>AssociatedBundleIdentifiers</key>
+  <array>
+    <string>com.specter.ai</string>
+  </array>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>${root}/scripts/prod-launch.sh</string>
+    <string>${launcher}</string>
   </array>
   <key>WorkingDirectory</key>
   <string>${root}</string>
@@ -50,6 +59,7 @@ EOF
 
 plutil -lint "$plist"
 launchctl bootout "${domain}/${label}" 2>/dev/null || true
+sleep 1
 launchctl bootstrap "$domain" "$plist"
 launchctl enable "${domain}/${label}"
 launchctl kickstart -k "${domain}/${label}"

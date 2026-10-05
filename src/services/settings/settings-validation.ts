@@ -82,6 +82,8 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   workAreaCaptureEnabled: (v) => typeof v === 'boolean',
   workAreaDisplayId: (v) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0,
   watchFrame: (v) => isWatchFrame(v),
+  watchFrameBorderPx: (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 8,
+  watchFrameBorderOpacity: (v) => typeof v === 'number' && v >= 0.4 && v <= 1,
   workCoachSession: (v) => {
     if (v === null || v === undefined) return true
     if (typeof v !== 'object') return false

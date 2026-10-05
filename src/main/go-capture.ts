@@ -1,33 +1,24 @@
-import { spawn, execFile } from 'child_process'
-import { existsSync } from 'fs'
-import { mkdtemp, readFile, rm } from 'fs/promises'
-import { tmpdir } from 'os'
-import path from 'path'
-import { promisify } from 'util'
-import { app } from 'electron'
-import { runPngCapture } from '../services/capture/capture-process'
+import { desktopCapturer, screen } from 'electron'
+import { displayAtScreenshotIndex } from '../services/capture/display-capture'
 
-const execFileAsync = promisify(execFile)
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 
-export function resolveCaptureBinary(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'specter-capture')
-    : path.join(app.getAppPath(), 'capture', 'bin', 'specter-capture')
-}
-
-/** Optional Go helper; development falls back to the same native macOS command. */
+/** Capture one display from inside Electron. The external helper fails under launchd. */
 export async function captureScreenPng(displayIndex = 0): Promise<Buffer> {
   if (!Number.isInteger(displayIndex) || displayIndex < 0) throw new Error('Invalid capture display index')
-  const bin = resolveCaptureBinary()
-  if (existsSync(bin)) {
-    return runPngCapture(() => spawn(bin, ['-display', String(displayIndex + 1)], { stdio: ['ignore', 'pipe', 'pipe'] }))
-  }
-  const directory = await mkdtemp(path.join(tmpdir(), 'specter-capture-'))
-  const file = path.join(directory, 'screen.png')
-  try {
-    await execFileAsync('/usr/sbin/screencapture', ['-x', '-D', String(displayIndex + 1), file], { timeout: 15_000 })
-    return await readFile(file)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
+  const displays = screen.getAllDisplays()
+  const display = displayAtScreenshotIndex(displays, screen.getPrimaryDisplay().id, displayIndex)
+  if (!display) throw new Error('No display to capture')
+  const width = Math.max(1, Math.round(display.bounds.width * display.scaleFactor))
+  const height = Math.max(1, Math.round(display.bounds.height * display.scaleFactor))
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width, height }
+  })
+  const id = String(display.id)
+  const source = sources.find((item) => item.display_id === id || item.id.startsWith(`screen:${id}:`))
+  if (!source) throw new Error('Screen capture source not found')
+  const png = source.thumbnail.toPNG()
+  if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error('Screen capture returned an invalid PNG')
+  return png
 }

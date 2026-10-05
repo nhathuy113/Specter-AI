@@ -13,7 +13,7 @@ import { resolveBackgroundCaptureParams } from '../services/capture/background-c
 import { getSetting } from '../services/settings/store'
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import {
-  resolveScreenshotScreenIndexForDisplay,
+  screenshotIndexForDisplay,
   type DisplayInfo,
   type SmartCropPlan,
   displayForWindow
@@ -29,7 +29,7 @@ import { rememberWorkWindow, resolveWorkWindowForCrop } from './work-window-memo
 
 let isCapturing = false
 
-/** macOS screenshot via the Go capture binary (screencapture -x, no flash). */
+/** macOS screenshot via Electron. The screencapture helper fails under launchd. */
 async function captureMacOSDisplayPng(displayIndex?: number): Promise<Buffer> {
   return captureScreenPng(displayIndex)
 }
@@ -291,8 +291,9 @@ function listElectronDisplays(): DisplayInfo[] {
 }
 
 async function captureFromPlan(plan: SmartCropPlan): Promise<Buffer> {
-  const listDisplays = () => screenshot.listDisplays()
-  const screenIndex = await resolveScreenshotScreenIndexForDisplay(plan.display, listDisplays)
+  const displays = listElectronDisplays()
+  const primaryId = displays.find((display) => display.isPrimary)?.id ?? displays[0]?.id ?? plan.display.id
+  const screenIndex = screenshotIndexForDisplay(displays, primaryId, plan.display.id)
   let imgBuffer = await captureDisplayScreenshot(screenIndex)
 
   if (plan.type === 'window-crop') {
@@ -450,8 +451,9 @@ export async function captureScreenText(
   } catch (err: unknown) {
     // Always restore overlay even if capture fails
     if (wasVisible) restoreOverlay()
-    const message = err instanceof Error ? err.message : 'Screen capture failed'
-    throw new Error(message)
+    const message = err instanceof Error ? err.message : String(err)
+    console.warn('[Specter] Screen capture failed:', err)
+    throw new Error(message || 'Screen capture failed')
   } finally {
     restoreFrame()
     isCapturing = false

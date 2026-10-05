@@ -51,6 +51,8 @@ export interface UserSettings {
   workAreaCaptureEnabled: boolean
   workAreaDisplayId: number
   watchFrame: { x: number; y: number; width: number; height: number }
+  watchFrameBorderPx: number
+  watchFrameBorderOpacity: number
 }
 
 export interface OpenRouterModel {

@@ -49,6 +49,8 @@ interface SettingsState {
   smartCrop: boolean
   workAreaCaptureEnabled: boolean
   workAreaDisplayId: number
+  watchFrameBorderPx: number
+  watchFrameBorderOpacity: number
 }
 
 const DEFAULT_STATE: SettingsState = {
@@ -91,7 +93,9 @@ const DEFAULT_STATE: SettingsState = {
   autoHideDelay: 0,
   smartCrop: true,
   workAreaCaptureEnabled: false,
-  workAreaDisplayId: 0
+  workAreaDisplayId: 0,
+  watchFrameBorderPx: DEFAULT_SETTINGS.watchFrameBorderPx,
+  watchFrameBorderOpacity: DEFAULT_SETTINGS.watchFrameBorderOpacity
 }
 
 export default function Settings() {
@@ -164,7 +168,9 @@ export default function Settings() {
         autoHideDelay: typeof all.autoHideDelay === 'number' ? all.autoHideDelay : 0,
         smartCrop: all.smartCrop || false,
         workAreaCaptureEnabled: !!(all as SettingsState).workAreaCaptureEnabled,
-        workAreaDisplayId: (all as SettingsState).workAreaDisplayId || 0
+        workAreaDisplayId: (all as SettingsState).workAreaDisplayId || 0,
+        watchFrameBorderPx: typeof all.watchFrameBorderPx === 'number' ? all.watchFrameBorderPx : DEFAULT_SETTINGS.watchFrameBorderPx,
+        watchFrameBorderOpacity: typeof all.watchFrameBorderOpacity === 'number' ? all.watchFrameBorderOpacity : DEFAULT_SETTINGS.watchFrameBorderOpacity
       })
     } catch (err) {
       console.error('Failed to load settings:', err)
@@ -209,6 +215,8 @@ export default function Settings() {
       await api.setSetting('smartCrop', settings.smartCrop)
       await api.setSetting('workAreaCaptureEnabled', settings.workAreaCaptureEnabled)
       await api.setSetting('workAreaDisplayId', settings.workAreaDisplayId)
+      await api.setSetting('watchFrameBorderPx', settings.watchFrameBorderPx)
+      await api.setSetting('watchFrameBorderOpacity', settings.watchFrameBorderOpacity)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
@@ -972,6 +980,41 @@ export default function Settings() {
                   ) : null}
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-2 border-t border-white/5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-white/50">Watch frame border</label>
+                <span className="text-xs text-white/30 font-mono">{settings.watchFrameBorderPx}px</span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="8"
+                step="1"
+                value={settings.watchFrameBorderPx}
+                onChange={(e) => updateSetting('watchFrameBorderPx', parseInt(e.target.value, 10))}
+                className="w-full accent-violet-500"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-white/50">Watch frame opacity</label>
+                <span className="text-xs text-white/30 font-mono">
+                  {Math.round(settings.watchFrameBorderOpacity * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0.4"
+                max="1"
+                step="0.02"
+                value={settings.watchFrameBorderOpacity}
+                onChange={(e) => updateSetting('watchFrameBorderOpacity', parseFloat(e.target.value))}
+                className="w-full accent-violet-500"
+              />
             </div>
           </div>
 

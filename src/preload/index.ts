@@ -121,6 +121,7 @@ export interface SpecterAPI {
   setWatchFramePassthrough: (ignore: boolean) => void
   askWatchFrame: () => void
   onWatchFrameAskState: (callback: (loading: boolean) => void) => () => void
+  onWatchFrameBorder: (callback: (style: { px: number; opacity: number }) => void) => () => void
   captureExclusionVersion: 'v1' | 'v2'
 }
 
@@ -435,6 +436,15 @@ const api: SpecterAPI = {
     }
     ipcRenderer.on(IPC_CHANNELS.WATCH_FRAME_ASK_STATE, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.WATCH_FRAME_ASK_STATE, handler)
+  },
+  onWatchFrameBorder: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, style: unknown) => {
+      if (typeof style !== 'object' || style === null) return
+      const border = style as { px?: unknown; opacity?: unknown }
+      if (typeof border.px === 'number' && typeof border.opacity === 'number') callback({ px: border.px, opacity: border.opacity })
+    }
+    ipcRenderer.on(IPC_CHANNELS.WATCH_FRAME_BORDER, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.WATCH_FRAME_BORDER, handler)
   }
 }
 

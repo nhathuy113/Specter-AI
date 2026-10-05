@@ -35,6 +35,25 @@ export function matchScreenshotDisplayIndex(
   return null
 }
 
+/** Index of an Electron display in screenshot-desktop order: primary, then the others. */
+export function screenshotIndexForDisplay(displays: { id: number }[], primaryId: number, displayId: number): number {
+  const primary = displays.find((display) => display.id === primaryId)
+  const ordered = primary ? [primary, ...displays.filter((display) => display.id !== primaryId)] : displays
+  const index = ordered.findIndex((display) => display.id === displayId)
+  return index >= 0 ? index : 0
+}
+
+/** screenshot-desktop index 0 is the primary display, then the others. */
+export function displayAtScreenshotIndex<T extends { id: number }>(
+  displays: T[],
+  primaryId: number,
+  index: number
+): T | undefined {
+  const primary = displays.find((display) => display.id === primaryId)
+  const ordered = primary ? [primary, ...displays.filter((display) => display.id !== primaryId)] : displays
+  return ordered[index] ?? ordered[0]
+}
+
 /** Fallback when name matching fails — primary is always index 0 in screenshot-desktop. */
 export function fallbackScreenshotDisplayIndex(
   isPrimary: boolean,

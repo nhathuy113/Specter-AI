@@ -22,7 +22,8 @@ export function createCoachTickRunner(evaluator: CoachTriggerEvaluator) {
     let capture: ScreenCaptureResult = { text: '', timestamp: Date.now() }
     try {
       capture = await deps.captureScreen()
-    } catch {
+    } catch (err) {
+      console.warn('[Specter] Coach capture failed:', err instanceof Error ? err.message : err)
       return { action: 'skip', reason: 'empty-text', fingerprint: '' }
     }
 

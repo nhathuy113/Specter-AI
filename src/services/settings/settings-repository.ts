@@ -65,7 +65,9 @@ export function createSettingsRepository(persistence: () => SettingsPersistence,
       smartCrop: getSetting('smartCrop') as boolean,
       workAreaCaptureEnabled: getSetting('workAreaCaptureEnabled') as boolean,
       workAreaDisplayId: getSetting('workAreaDisplayId') as number,
-      watchFrame: getSetting('watchFrame') as UserSettings['watchFrame']
+      watchFrame: getSetting('watchFrame') as UserSettings['watchFrame'],
+      watchFrameBorderPx: getSetting('watchFrameBorderPx') as number,
+      watchFrameBorderOpacity: getSetting('watchFrameBorderOpacity') as number
     }
   }
 

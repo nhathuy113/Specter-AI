@@ -1,5 +1,6 @@
 // Specter AI — Main process entry point
 import { app, BrowserWindow, shell } from 'electron'
+import path from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOverlay, syncMacAppActivationPolicy } from './overlay-window'
 import { createDashboardWindow } from './dashboard-window'
@@ -9,8 +10,11 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { startDeepseekCloak, stopDeepseekCloak } from '../services/ai/deepseek-cloak'
 import { bootstrapSettingsFromEnv, loadEnvFiles } from '../services/settings/env-bootstrap'
 import { isLiveDevRenderer, macDockPolicy } from '../services/ui/mac-dock-policy'
+import { APP_NAME } from '../shared/constants'
 
 loadEnvFiles()
+app.setName(APP_NAME)
+app.setPath('userData', path.join(app.getPath('appData'), 'specter-ai'))
 
 // Catch unhandled errors globally — prevents crash from spawn ENOENT (e.g. missing sox)
 process.on('uncaughtException', (err) => {

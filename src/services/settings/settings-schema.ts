@@ -66,5 +66,7 @@ export const settingsSchema = {
       height: { type: 'number' as const }
     },
     default: DEFAULT_SETTINGS.watchFrame
-  }
+  },
+  watchFrameBorderPx: { type: 'number' as const, default: DEFAULT_SETTINGS.watchFrameBorderPx, minimum: 1, maximum: 8 },
+  watchFrameBorderOpacity: { type: 'number' as const, default: DEFAULT_SETTINGS.watchFrameBorderOpacity, minimum: 0.4, maximum: 1 }
 }

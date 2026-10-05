@@ -430,7 +430,9 @@ export const DEFAULT_SETTINGS = {
   /** Pin OCR/coach/journal to one monitor (ignores focus). */
   workAreaCaptureEnabled: false,
   workAreaDisplayId: 0,
-  watchFrame: { x: 0, y: 0, width: 0, height: 0 }
+  watchFrame: { x: 0, y: 0, width: 0, height: 0 },
+  watchFrameBorderPx: 5,
+  watchFrameBorderOpacity: 0.82
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'

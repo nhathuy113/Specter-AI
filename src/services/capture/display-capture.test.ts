@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   displayForWindow,
+  displayAtScreenshotIndex,
   fallbackScreenshotDisplayIndex,
+  screenshotIndexForDisplay,
   matchScreenshotDisplayIndex,
   normalizeDisplayName,
   planSmartCropCapture,
@@ -39,6 +41,24 @@ describe('matchScreenshotDisplayIndex', () => {
 
   it('returns null when no display matches', () => {
     expect(matchScreenshotDisplayIndex('Unknown Monitor', DUAL_MONITOR_DISPLAYS)).toBeNull()
+  })
+})
+
+describe('screenshotIndexForDisplay', () => {
+  const displays = [{ id: 2 }, { id: 1 }]
+
+  it('numbers the primary display 0 and the external display 1', () => {
+    expect(screenshotIndexForDisplay(displays, 1, 1)).toBe(0)
+    expect(screenshotIndexForDisplay(displays, 1, 2)).toBe(1)
+  })
+})
+
+describe('displayAtScreenshotIndex', () => {
+  const displays = [{ id: 2 }, { id: 1 }]
+
+  it('puts the primary display at index 0', () => {
+    expect(displayAtScreenshotIndex(displays, 1, 0)?.id).toBe(1)
+    expect(displayAtScreenshotIndex(displays, 1, 1)?.id).toBe(2)
   })
 })
 

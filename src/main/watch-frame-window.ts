@@ -32,6 +32,14 @@ export function notifyWatchFrameAsk(loading: boolean): void {
   frameWindow.webContents.send(IPC_CHANNELS.WATCH_FRAME_ASK_STATE, loading)
 }
 
+export function applyWatchFrameBorder(): void {
+  if (!frameWindow || frameWindow.isDestroyed()) return
+  frameWindow.webContents.send(IPC_CHANNELS.WATCH_FRAME_BORDER, {
+    px: getSetting<number>('watchFrameBorderPx'),
+    opacity: getSetting<number>('watchFrameBorderOpacity')
+  })
+}
+
 export function getLiveWatchFrame(): WatchFrame | undefined {
   return frameWindow && !frameWindow.isDestroyed() ? frameWindow.getBounds() : undefined
 }
@@ -219,6 +227,7 @@ export function syncWatchFrame(): void {
       if (generation !== showGeneration) return
       if (frameWindow !== win || win.isDestroyed() || !watchFrameWanted()) return
       ready = true
+      applyWatchFrameBorder()
       if (!watchFrameCaptureHold.suspended && mayAutoShowWatchFrame(watchFrameUserClosed)) win.showInactive()
       console.info('[Specter] Watch frame visible', frameWindow.getBounds())
     })

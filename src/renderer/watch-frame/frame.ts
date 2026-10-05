@@ -82,3 +82,16 @@ window.addEventListener('pointercancel', endDrag)
 document.documentElement.addEventListener('lostpointercapture', endDrag)
 window.addEventListener('blur', endDrag)
 passthrough(true)
+
+function applyBorder(px: number, opacity: number): void {
+  const frame = document.getElementById('frame')
+  if (!frame) return
+  frame.style.borderWidth = `${px}px`
+  frame.style.borderColor = `rgba(0, 232, 135, ${opacity})`
+}
+
+window.specterAPI.onWatchFrameBorder(style => applyBorder(style.px, style.opacity))
+void Promise.all([
+  window.specterAPI.getSetting<number>('watchFrameBorderPx'),
+  window.specterAPI.getSetting<number>('watchFrameBorderOpacity')
+]).then(([px, opacity]) => applyBorder(px, opacity))

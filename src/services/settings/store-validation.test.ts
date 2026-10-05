@@ -35,6 +35,13 @@ describe('store validation', () => {
     expect(invalid).toBe(false)
   })
 
+  it('validates watch frame border', () => {
+    expect(isValidSetting('watchFrameBorderPx', 5)).toBe(true)
+    expect(isValidSetting('watchFrameBorderPx', 0)).toBe(false)
+    expect(isValidSetting('watchFrameBorderOpacity', 0.82)).toBe(true)
+    expect(isValidSetting('watchFrameBorderOpacity', 0.2)).toBe(false)
+  })
+
   it('validates assistant and perception modes', () => {
     expect(isValidSetting('assistantMode', 'game')).toBe(true)
     expect(isValidSetting('assistantMode', 'invalid')).toBe(false)
