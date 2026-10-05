@@ -154,4 +154,8 @@ CLAUDE.md
 
 .claude/skills/
 CLAUDE.md
-.agent/ 
+.agent/
+
+# Python bytecode, e.g. scripts/__pycache__/deepseek_cloak_chat.cpython-314.pyc
+__pycache__/
+*.pyc
