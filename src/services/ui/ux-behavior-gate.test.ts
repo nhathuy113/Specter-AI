@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
 import { macDockPolicy } from './mac-dock-policy'
-import { DEFAULT_SETTINGS, OVERLAY_DEFAULTS, DEFAULT_WORK_COACH_SYSTEM_PROMPT, WORK_COACH_REPLY_FORMAT_VI } from '../../shared/constants'
+import { DEFAULT_HOTKEYS, DEFAULT_SETTINGS, OVERLAY_DEFAULTS, DEFAULT_WORK_COACH_SYSTEM_PROMPT, WORK_COACH_REPLY_FORMAT_VI } from '../../shared/constants'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 
 /**
@@ -73,6 +73,16 @@ describe('ux behavior gate', () => {
     expect(overlay).toContain('setVibrancy')
     expect(overlay).toContain('fitOverlayToContent')
     expect(IPC_CHANNELS.OVERLAY_SET_GLASS_MODE).toBe('overlay:set-glass-mode')
+  })
+
+  it('toggles the overlay with Command+\\ and stays closed while watch runs', () => {
+    expect(DEFAULT_HOTKEYS.toggleOverlay).toBe('CommandOrControl+\\')
+    const hotkeys = readFileSync(resolve(__dirname, '../../main/hotkey-manager.ts'), 'utf-8')
+    const overlay = readFileSync(resolve(__dirname, '../../main/overlay-window.ts'), 'utf-8')
+    expect(hotkeys).toContain("const toggleAccelerator = 'CommandOrControl+\\\\'")
+    expect(hotkeys).toContain('toggleOverlay()')
+    expect(overlay).toContain('overlayUserClosed')
+    expect(overlay).not.toMatch(/overlayWindow\.hide\(\)[\s\S]{0,80}syncOverlayBackgroundMode\(\)/)
   })
 
   it('routes double ⌘/ to work auto toggle (not one-shot explain)', () => {

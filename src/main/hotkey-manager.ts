@@ -53,11 +53,15 @@ function applyHotkeys(): void {
   }
 
   try {
-    globalShortcut.register(hotkeys.toggleOverlay, () => {
-      if (win && !win.isDestroyed()) {
-        toggleOverlay()
-      }
-    })
+    const toggleAccelerator = 'CommandOrControl+\\'
+    const toggle = () => {
+      if (win && !win.isDestroyed()) toggleOverlay()
+    }
+    globalShortcut.register(toggleAccelerator, toggle)
+    if (hotkeys.toggleOverlay !== toggleAccelerator) {
+      globalShortcut.register(hotkeys.toggleOverlay, toggle)
+    }
+    console.info(`[Specter] Hotkey ${toggleAccelerator} toggles the overlay`)
   } catch (e) {
     console.warn('[Specter] Failed to register toggleOverlay hotkey:', e)
   }

@@ -23,6 +23,7 @@ import { resolveOverlayFitBounds, type OverlayFitRequest } from '../services/ui/
 
 let overlayWindow: BrowserWindow | null = null
 let backgroundWatchMode = false
+let overlayUserClosed = false
 let cachedExpandedBounds: Rectangle | null = null
 let suppressResizePersist = false
 
@@ -282,6 +283,7 @@ function applyOverlayBackgroundLayout(win: BrowserWindow, watchEnabled: boolean)
   const expanded = win.isVisible() && !isPillBounds(bounds)
 
   if (watchEnabled) {
+    if (overlayUserClosed) return
     if (!win.isVisible()) {
       showOverlayPill()
       return
@@ -381,19 +383,16 @@ export function isOverlayBackgroundWatch(): boolean {
 }
 
 export function toggleOverlay(): void {
-  if (!overlayWindow) return
-  if (overlayWindow.isVisible() && !isPillBounds(overlayWindow.getBounds())) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  if (overlayWindow.isVisible()) {
+    overlayUserClosed = true
     overlayWindow.hide()
-    syncOverlayBackgroundMode()
+    console.info('[Specter] Overlay closed (⌘\\)')
     return
   }
-  if (overlayWindow.isVisible() && isPillBounds(overlayWindow.getBounds())) {
-    overlayWindow.hide()
-    return
-  }
-
-  backgroundWatchMode = false
+  overlayUserClosed = false
   expandOverlayWindow(true)
+  console.info('[Specter] Overlay shown (⌘\\)')
 }
 
 export function getOverlayWindow(): BrowserWindow | null {

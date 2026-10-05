@@ -6,3 +6,6 @@ dev-run:
 prod-run:
 	./node_modules/.bin/electron-vite build
 	./node_modules/.bin/electron-vite preview
+
+prod-install:
+	./scripts/install-prod-launchd.sh
