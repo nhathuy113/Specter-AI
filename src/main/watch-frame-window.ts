@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import { applyExcludeFromCapture } from './capture-protection'
+import { captureExclusion } from './capture-exclusion'
 import { getSetting, setSetting } from '../services/settings/store'
 import { clampWatchFrame, hitWatchFrame, isWatchFrame, type WatchFrame } from '../services/capture/watch-frame'
 import { mayAutoShowWatchFrame, nextWatchFrameBorder } from '../services/ui/watch-frame-border-policy'
@@ -195,8 +195,11 @@ export function syncWatchFrame(): void {
     win.setIgnoreMouseEvents(true, { forward: true })
     win.setAlwaysOnTop(true, 'screen-saver', 1)
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    if (process.platform === 'darwin') win.setContentProtection(true)
-    if (process.platform === 'win32') applyExcludeFromCapture(win)
+    const protect = () => { if (!win.isDestroyed()) captureExclusion.protect(win) }
+    protect()
+    win.on('show', protect)
+    win.on('move', protect)
+    win.on('resize', protect)
     const generation = showGeneration
     win.on('closed', () => {
       if (frameWindow === win) {

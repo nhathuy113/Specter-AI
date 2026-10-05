@@ -10,7 +10,7 @@ vi.mock('../services/settings/store', () => ({
   getSetting: (key: string) => native.settings[key],
   setSetting: (key: string, value: unknown) => { native.settings[key] = value; native.set(key, value) }
 }))
-vi.mock('./capture-protection', () => ({ applyExcludeFromCapture: vi.fn() }))
+vi.mock('./capture-exclusion', () => ({ captureExclusion: { protect: vi.fn() } }))
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('events')
   class Window extends EventEmitter {

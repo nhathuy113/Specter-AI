@@ -1,7 +1,7 @@
 // Overlay window — transparent, always-on-top, invisible to screen share
 //
 // Screen-capture protection:
-//   macOS:   type:'panel' + screen-saver level → natively excluded from capture.
+//   macOS:   CaptureExclusionV2 — setContentProtection plus CGSSetWindowCaptureExcludeShape.
 //   Windows: Uses koffi FFI to call SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)
 //            which makes the window completely invisible to all capture APIs.
 //            Electron's setContentProtection(true) is NOT used because it causes
@@ -14,7 +14,7 @@ import { is } from '@electron-toolkit/utils'
 import { getSetting, setSetting } from '../services/settings/store'
 import { OVERLAY_DEFAULTS } from '../shared/constants'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
+import { captureExclusion } from './capture-exclusion'
 import { syncWatchFrame } from './watch-frame-window'
 import { restoreMacOSForegroundApp } from './macos-front-window'
 import { isLiveDevRenderer, macDockPolicy } from '../services/ui/mac-dock-policy'
@@ -29,18 +29,8 @@ let suppressResizePersist = false
 
 const PILL = { width: 250, height: 56, margin: 16 }
 
-/**
- * Apply screen-capture protection via native FFI (Windows only).
- * Uses WDA_EXCLUDEFROMCAPTURE for true invisibility — no black rectangle.
- */
 function applyCaptureProtection(win: BrowserWindow): void {
-  if (win.isDestroyed()) return
-  if (process.platform !== 'win32') return
-
-  const applied = applyExcludeFromCapture(win)
-  if (applied) {
-    verifyDisplayAffinity(win)
-  }
+  captureExclusion.protect(win)
 }
 
 function isPillBounds(bounds: Rectangle): boolean {
@@ -178,7 +168,8 @@ export function createOverlayWindow(): BrowserWindow {
   })
 
   overlayWindow.on('moved', () => {
-    if (!overlayWindow) return
+    if (!overlayWindow || overlayWindow.isDestroyed()) return
+    captureExclusion.protect(overlayWindow)
     const bounds = overlayWindow.getBounds()
     if (isPillBounds(bounds)) return
     setSetting('overlayPosition', { x: bounds.x, y: bounds.y })
@@ -186,7 +177,9 @@ export function createOverlayWindow(): BrowserWindow {
   })
 
   overlayWindow.on('resize', () => {
-    if (!overlayWindow || suppressResizePersist) return
+    if (!overlayWindow || overlayWindow.isDestroyed()) return
+    captureExclusion.protect(overlayWindow)
+    if (suppressResizePersist) return
     const bounds = overlayWindow.getBounds()
     if (isPillBounds(bounds)) return
     setSetting('overlaySize', { width: bounds.width, height: bounds.height })

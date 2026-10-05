@@ -39,7 +39,7 @@
     "test:e2e": "vitest run src/e2e",
     "test:all": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
-    "test:gate": "vitest run src/services/ui/ux-behavior-gate.test.ts src/services/ui/overlay-placement.test.ts src/services/ui/hotkey-double-tap.test.ts src/services/work/work-auto-settings.test.ts src/services/capture/work-area-capture.test.ts src/main/macos-front-window.test.ts",
+    "test:gate": "vitest run src/services/ui/ux-behavior-gate.test.ts src/services/ui/overlay-placement.test.ts src/services/ui/hotkey-double-tap.test.ts src/services/work/work-auto-settings.test.ts src/services/capture/work-area-capture.test.ts src/main/macos-front-window.test.ts src/main/capture-exclusion-gate.test.ts src/services/capture/mac-capture-exclusion-v2.test.ts",
     "test:watch": "vitest",
     "capture:build": "go build -C capture -o bin/specter-capture .",
     "postinstall": "electron-builder install-app-deps",
