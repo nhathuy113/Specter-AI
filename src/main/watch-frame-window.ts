@@ -4,9 +4,11 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture } from './capture-protection'
 import { getSetting, setSetting } from '../services/settings/store'
 import { clampWatchFrame, hitWatchFrame, isWatchFrame, type WatchFrame } from '../services/capture/watch-frame'
+import { mayAutoShowWatchFrame, nextWatchFrameBorder } from '../services/ui/watch-frame-border-policy'
 import { watchFrameCaptureHold, type WatchFrameSurface } from '../services/capture/watch-frame-capture-hold'
 
 let frameWindow: BrowserWindow | null = null
+let watchFrameUserClosed = false
 let showGeneration = 0
 let ready = false
 let dragging = false
@@ -41,6 +43,7 @@ function watchFrameSurface(): WatchFrameSurface {
     get visible() { return !!(win && !win.isDestroyed() && win.isVisible()) },
     hide: () => { win?.hide() },
     restore: () => {
+      if (!mayAutoShowWatchFrame(watchFrameUserClosed)) return
       if (ready && watchFrameWanted() && frameWindow && !frameWindow.isDestroyed() && !frameWindow.isVisible()) frameWindow.showInactive()
     }
   }
@@ -56,6 +59,7 @@ function watchFrameWanted(): boolean {
 }
 
 function closeWatchFrame(): void {
+  watchFrameUserClosed = false
   showGeneration += 1
   saveFrame()
   if (hoverTimer) clearInterval(hoverTimer)
@@ -134,6 +138,29 @@ export function registerWatchFrameIpc(): void {
   })
 }
 
+/** Show or hide only the border. Capture keeps the saved rectangle. */
+export function toggleWatchFrame(): void {
+  const visible = !!(frameWindow && !frameWindow.isDestroyed() && frameWindow.isVisible())
+  const action = nextWatchFrameBorder(watchFrameWanted(), visible)
+  if (action === 'ignore') {
+    console.info('[Specter] Watch frame toggle ignored — watch is off')
+    return
+  }
+  if (action === 'hide') {
+    watchFrameUserClosed = true
+    frameWindow?.hide()
+    console.info('[Specter] Watch frame hidden (⌘])')
+    return
+  }
+  watchFrameUserClosed = false
+  if (!frameWindow || frameWindow.isDestroyed()) {
+    syncWatchFrame()
+  } else if (ready) {
+    frameWindow.showInactive()
+  }
+  console.info('[Specter] Watch frame shown (⌘])')
+}
+
 /** Visible border of the capture rectangle. Shown while Watch or full auto is on. */
 export function syncWatchFrame(): void {
   if (!watchFrameWanted()) {
@@ -189,7 +216,7 @@ export function syncWatchFrame(): void {
       if (generation !== showGeneration) return
       if (frameWindow !== win || win.isDestroyed() || !watchFrameWanted()) return
       ready = true
-      if (!watchFrameCaptureHold.suspended) win.showInactive()
+      if (!watchFrameCaptureHold.suspended && mayAutoShowWatchFrame(watchFrameUserClosed)) win.showInactive()
       console.info('[Specter] Watch frame visible', frameWindow.getBounds())
     })
     loadFrame(win)
@@ -201,6 +228,6 @@ export function syncWatchFrame(): void {
     }, 80)
   } else if (!dragging) {
     frameWindow.setBounds(bounds)
-    if (ready && !watchFrameCaptureHold.suspended && !frameWindow.isVisible()) frameWindow.showInactive()
+    if (ready && !watchFrameCaptureHold.suspended && mayAutoShowWatchFrame(watchFrameUserClosed) && !frameWindow.isVisible()) frameWindow.showInactive()
   }
 }

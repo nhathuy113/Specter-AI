@@ -273,6 +273,7 @@ export const PERCEPTION_MODE_LABELS: Record<PerceptionMode, string> = {
 export const DEFAULT_HOTKEYS = {
   askAI: 'CommandOrControl+Return',
   toggleOverlay: 'CommandOrControl+\\',
+  toggleWatchFrame: 'CommandOrControl+]',
   toggleAudio: 'CommandOrControl+Shift+Space',
   screenshotAsk: 'CommandOrControl+Shift+Return',
   /** Double-tap ⌘/ within ~450ms (like typing //) → ask about active tab */

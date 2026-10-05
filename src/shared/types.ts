@@ -19,6 +19,7 @@ export interface UserSettings {
   hotkeys: {
     askAI: string
     toggleOverlay: string
+    toggleWatchFrame: string
     toggleAudio: string
     screenshotAsk: string
     activeTabAsk: string

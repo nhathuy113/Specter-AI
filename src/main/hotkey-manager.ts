@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { getSetting } from '../services/settings/store'
 import { DEFAULT_HOTKEYS } from '../shared/constants'
 import { showOverlay, toggleOverlay } from './overlay-window'
+import { toggleWatchFrame } from './watch-frame-window'
 import { toggleWorkAutoMode } from './work-auto-mode'
 import {
   nextActiveTabPressMs,
@@ -64,6 +65,14 @@ function applyHotkeys(): void {
     console.info(`[Specter] Hotkey ${toggleAccelerator} toggles the overlay`)
   } catch (e) {
     console.warn('[Specter] Failed to register toggleOverlay hotkey:', e)
+  }
+
+  try {
+    const frameAccelerator = 'CommandOrControl+]'
+    globalShortcut.register(frameAccelerator, () => toggleWatchFrame())
+    console.info(`[Specter] Hotkey ${frameAccelerator} toggles the watch frame`)
+  } catch (e) {
+    console.warn('[Specter] Failed to register toggleWatchFrame hotkey:', e)
   }
 
   try {

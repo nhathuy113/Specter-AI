@@ -2,6 +2,7 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
 import { macDockPolicy } from './mac-dock-policy'
+import { mayAutoShowWatchFrame, nextWatchFrameBorder } from './watch-frame-border-policy'
 import { DEFAULT_HOTKEYS, DEFAULT_SETTINGS, OVERLAY_DEFAULTS, DEFAULT_WORK_COACH_SYSTEM_PROMPT, WORK_COACH_REPLY_FORMAT_VI } from '../../shared/constants'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 
@@ -83,6 +84,20 @@ describe('ux behavior gate', () => {
     expect(hotkeys).toContain('toggleOverlay()')
     expect(overlay).toContain('overlayUserClosed')
     expect(overlay).not.toMatch(/overlayWindow\.hide\(\)[\s\S]{0,80}syncOverlayBackgroundMode\(\)/)
+  })
+
+  it('toggles only the watch-frame border with Command+]', () => {
+    expect(DEFAULT_HOTKEYS.toggleWatchFrame).toBe('CommandOrControl+]')
+    expect(nextWatchFrameBorder(true, true)).toBe('hide')
+    expect(nextWatchFrameBorder(true, false)).toBe('show')
+    expect(nextWatchFrameBorder(false, true)).toBe('ignore')
+    expect(mayAutoShowWatchFrame(true)).toBe(false)
+    const hotkeys = readFileSync(resolve(__dirname, '../../main/hotkey-manager.ts'), 'utf-8')
+    const frame = readFileSync(resolve(__dirname, '../../main/watch-frame-window.ts'), 'utf-8')
+    expect(hotkeys).toContain("const frameAccelerator = 'CommandOrControl+]'")
+    expect(hotkeys).toContain('toggleWatchFrame()')
+    expect(frame).toContain('nextWatchFrameBorder(')
+    expect(frame).toContain('mayAutoShowWatchFrame(')
   })
 
   it('routes double ⌘/ to work auto toggle (not one-shot explain)', () => {

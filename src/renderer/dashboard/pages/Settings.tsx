@@ -35,6 +35,7 @@ interface SettingsState {
   hotkeys: {
     askAI: string
     toggleOverlay: string
+    toggleWatchFrame: string
     toggleAudio: string
     screenshotAsk: string
     activeTabAsk: string
@@ -78,6 +79,7 @@ const DEFAULT_STATE: SettingsState = {
   hotkeys: {
     askAI: 'CommandOrControl+Return',
     toggleOverlay: 'CommandOrControl+\\',
+    toggleWatchFrame: 'CommandOrControl+]',
     toggleAudio: 'CommandOrControl+Shift+Space',
     screenshotAsk: 'CommandOrControl+Shift+Return',
     activeTabAsk: 'Command+/'
@@ -1215,6 +1217,7 @@ export default function Settings() {
           {([
             { key: 'askAI' as const, label: 'Ask AI', desc: 'Trigger AI with current context' },
             { key: 'toggleOverlay' as const, label: 'Toggle Overlay', desc: 'Show/hide the overlay' },
+            { key: 'toggleWatchFrame' as const, label: 'Toggle watch frame', desc: 'Show/hide the capture border (⌘])' },
             { key: 'toggleAudio' as const, label: 'Toggle Audio', desc: 'Start/stop recording' },
             { key: 'screenshotAsk' as const, label: 'Screenshot + Ask', desc: 'Capture screen and ask AI' },
             { key: 'activeTabAsk' as const, label: 'Work auto (double ⌘/)', desc: 'Double-tap ⌘/ → bật/tắt chế độ auto (coach liên tục trên màn MacBook)' }
