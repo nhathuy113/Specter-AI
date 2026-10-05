@@ -33,9 +33,20 @@ describe('ux behavior gate', () => {
     const src = readFileSync(resolve(__dirname, '../../main/overlay-window.ts'), 'utf-8')
     expect(src).not.toMatch(/win\.hide\(\)[\s\S]*setOverlayBackgroundWatch/)
     expect(src).toContain('showOverlayPill()')
-    expect(src).not.toContain('app.setActivationPolicy(\'accessory\')')
-    expect(src).toContain('app.dock?.hide()')
-    expect(src).not.toContain('app.dock?.show()')
+  })
+
+  it('hides the Dock in prod and keeps a normal Dock app in live dev', () => {
+    const overlay = readFileSync(resolve(__dirname, '../../main/overlay-window.ts'), 'utf-8')
+    const index = readFileSync(resolve(__dirname, '../../main/index.ts'), 'utf-8')
+    expect(overlay).toContain("process.env['ELECTRON_RENDERER_URL']")
+    expect(overlay).toContain("app.setActivationPolicy('regular')")
+    expect(overlay).toContain('app.dock?.show()')
+    expect(overlay).toContain("app.setActivationPolicy('accessory')")
+    expect(overlay).toContain('app.dock?.hide()')
+    expect(index).toContain("app.setActivationPolicy('accessory')")
+    expect(index).toContain('syncMacAppActivationPolicy()')
+    expect(index).toContain('createDashboardWindow()')
+    expect(index).toContain("if (process.platform !== 'darwin')")
   })
 
   it('pill logs work only; coach + debug when expanded panel open', () => {
