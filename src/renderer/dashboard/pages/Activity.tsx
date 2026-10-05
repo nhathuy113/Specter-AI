@@ -5,7 +5,7 @@ import {
   dayLabel,
   heatmapCellIntensity,
   summarizeHeatmap
-} from '../../../services/activity-journal-heatmap'
+} from '../../../services/journal/activity-journal-heatmap'
 
 function ActivityHeatmap({ entries }: { entries: ActivityJournalEntry[] }) {
   const summary = useMemo(() => summarizeHeatmap(entries), [entries])

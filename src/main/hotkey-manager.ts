@@ -1,13 +1,13 @@
 import { globalShortcut, type BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import { getSetting } from '../services/store'
+import { getSetting } from '../services/settings/store'
 import { DEFAULT_HOTKEYS } from '../shared/constants'
 import { showOverlay, toggleOverlay } from './overlay-window'
 import { toggleWorkAutoMode } from './work-auto-mode'
 import {
   nextActiveTabPressMs,
   shouldFireActiveTabDoubleTap
-} from '../services/hotkey-double-tap'
+} from '../services/ui/hotkey-double-tap'
 
 let overlayRef: BrowserWindow | null = null
 let lastActiveTabPressMs = 0

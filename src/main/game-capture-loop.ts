@@ -1,12 +1,12 @@
 import { app } from 'electron'
 import path from 'path'
 import { DEFAULT_SETTINGS } from '../shared/constants'
-import { detectGame, isGameStillForeground, type DetectedGame } from '../services/game-mode'
-import { fingerprintPng, shouldKeepFrame, type BufferedFrame } from '../services/game-frame-dedup'
-import { shouldSkipGameFrame } from '../services/game-frame-filter'
-import { GameCaptureStore } from '../services/game-capture-store'
-import { runGameHourlyAi } from '../services/game-hourly-ai'
-import { getSetting } from '../services/store'
+import { detectGame, isGameStillForeground, type DetectedGame } from '../services/game/game-mode'
+import { fingerprintPng, shouldKeepFrame, type BufferedFrame } from '../services/game/game-frame-dedup'
+import { shouldSkipGameFrame } from '../services/game/game-frame-filter'
+import { GameCaptureStore } from '../services/game/game-capture-store'
+import { runGameHourlyAi } from '../services/game/game-hourly-ai'
+import { getSetting } from '../services/settings/store'
 import { captureGameFrame, isCurrentlyCapturing } from './screen-capture'
 
 let captureTimer: ReturnType<typeof setInterval> | null = null

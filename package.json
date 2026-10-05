@@ -36,7 +36,7 @@
     "test:unit": "vitest run --exclude 'src/e2e/**'",
     "test:e2e": "vitest run src/e2e",
     "test:all": "vitest run",
-    "test:gate": "vitest run src/services/ux-behavior-gate.test.ts src/services/overlay-placement.test.ts src/services/hotkey-double-tap.test.ts src/services/work-auto-settings.test.ts src/services/work-area-capture.test.ts src/main/macos-front-window.test.ts",
+    "test:gate": "vitest run src/services/ui/ux-behavior-gate.test.ts src/services/ui/overlay-placement.test.ts src/services/ui/hotkey-double-tap.test.ts src/services/work/work-auto-settings.test.ts src/services/capture/work-area-capture.test.ts src/main/macos-front-window.test.ts",
     "test:watch": "vitest",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "pnpm run build && electron-builder --dir",

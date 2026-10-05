@@ -2,7 +2,7 @@
 // Audio recording is handled in the renderer via Web Audio API (MediaRecorder).
 // This module receives audio buffers via IPC and sends them to a Whisper-compatible API.
 
-import { getSetting } from '../services/store'
+import { getSetting } from '../services/settings/store'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { writeFileSync, unlinkSync, existsSync } from 'fs'

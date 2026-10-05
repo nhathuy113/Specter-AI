@@ -179,15 +179,28 @@ specter-ai/
           History.tsx         Conversation history
 
     services/
-      openrouter.ts           OpenRouter API client (streaming)
-      context-builder.ts      Prompt assembly (screen + audio + query)
-      store.ts                Persistent settings (electron-store)
+      ai/                     Provider clients and API configuration checks
+      capture/                Display selection, smart crop, perception, dedup
+      coach/                  Coach prompts, state, tick runner, reply scoring
+      context/                Screen routing, prompt assembly, playbooks
+        skills/               Code-error and game-log context parsers
+        fixtures/             OCR fixtures for routing and prompt tests
+      game/                   Game capture storage, filtering, hourly analysis
+      journal/                Activity logging, heatmap, hourly reports
+      settings/               Persistent store and environment bootstrap
+      ui/                     Overlay sizing, placement, hotkey detection
+      work/                   Work sessions, problems, quizzes, escalation
 
     shared/
       types.ts                TypeScript interfaces
       constants.ts            App constants and defaults
       ipc-channels.ts         IPC channel name registry
 ```
+
+Service tests live beside the modules they exercise. Cross-feature pipeline tests
+also live in `src/e2e`. Keep Electron lifecycle and window orchestration in
+`src/main`, renderer UI in `src/renderer`, and cross-process contracts in
+`src/shared`. See [docs/CODE_STRUCTURE.md](docs/CODE_STRUCTURE.md) for placement rules.
 
 ### Data Flow
 

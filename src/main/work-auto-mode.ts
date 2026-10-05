@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import { getSetting, setSetting } from '../services/store'
+import { getSetting, setSetting } from '../services/settings/store'
 import { syncActivityJournal } from './activity-journal-loop'
 import { syncContinuousCoach } from './continuous-coach-loop'
 import { syncOverlayBackgroundMode } from './overlay-window'
@@ -8,7 +8,7 @@ import {
   buildWorkAutoDisablePatch,
   buildWorkAutoEnablePatch,
   isWorkAutoModeEnabled as isWorkAutoEnabled
-} from '../services/work-auto-settings'
+} from '../services/work/work-auto-settings'
 
 /** Double ⌘/ toggles continuous work auto (watch + explain on pinned MacBook screen). */
 export function isWorkAutoModeEnabled(): boolean {

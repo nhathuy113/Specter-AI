@@ -1,12 +1,12 @@
 import type { BrowserWindow } from 'electron'
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import type { PerceptionMode } from '../shared/constants'
-import { captureAccessibilityText } from '../services/accessibility-capture'
-import { appendJournalFromCapture } from '../services/activity-journal-capture'
-import { appendJournalSnapshot } from '../services/activity-journal'
-import { extractScreenContext } from '../services/context-router'
-import { fingerprintJournalFocus } from '../services/fingerprint'
-import { getSetting } from '../services/store'
+import { captureAccessibilityText } from '../services/capture/accessibility-capture'
+import { appendJournalFromCapture } from '../services/journal/activity-journal-capture'
+import { appendJournalSnapshot } from '../services/journal/activity-journal'
+import { extractScreenContext } from '../services/context/context-router'
+import { fingerprintJournalFocus } from '../services/capture/fingerprint'
+import { getSetting } from '../services/settings/store'
 import { captureScreenText } from './screen-capture'
 import { syncOverlayBackgroundMode, shouldRunWorkJournal } from './overlay-window'
 
@@ -90,4 +90,4 @@ export function syncActivityJournal(): void {
   startActivityJournal(undefined, intervalSec)
 }
 
-export { appendJournalFromCapture } from '../services/activity-journal-capture'
+export { appendJournalFromCapture } from '../services/journal/activity-journal-capture'

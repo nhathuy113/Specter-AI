@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCoachRequest } from '../services/coach-prompt'
-import { buildPlaybookContext, filterPlaybooksForMode } from '../services/playbook-filter'
-import { mergeAccessibilityAndOcr, resolvePerceptionPlan } from '../services/perception'
-import { scoreCoachReply } from '../services/coach-usefulness'
+import { resolveCoachRequest } from '../services/coach/coach-prompt'
+import { buildPlaybookContext, filterPlaybooksForMode } from '../services/context/playbook-filter'
+import { mergeAccessibilityAndOcr, resolvePerceptionPlan } from '../services/capture/perception'
+import { scoreCoachReply } from '../services/coach/coach-usefulness'
 import type { Playbook } from '../shared/types'
 
 const GAME_LOG_OCR = `

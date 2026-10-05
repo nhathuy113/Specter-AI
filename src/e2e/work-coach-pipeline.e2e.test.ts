@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import { CoachTriggerEvaluator } from '../services/coach-state'
-import { createCoachTickRunner } from '../services/coach-tick-runner'
-import { resolveAssistantRequest } from '../services/context-router'
+import { CoachTriggerEvaluator } from '../services/coach/coach-state'
+import { createCoachTickRunner } from '../services/coach/coach-tick-runner'
+import { resolveAssistantRequest } from '../services/context/context-router'
 import { pickBestBrowserWindow, resolveWorkWindowForCrop } from '../main/work-window-memory'
-import { runWorkCoachQuizVision } from '../services/work-coach-runner'
+import { runWorkCoachQuizVision } from '../services/work/work-coach-runner'
 import type { ScreenCaptureResult } from '../shared/types'
 
-vi.mock('../services/gemini-api', () => ({
+vi.mock('../services/ai/gemini-api', () => ({
   streamGeminiVisionCompletion: vi.fn(
     async (
       _messages: unknown,
@@ -24,8 +24,8 @@ vi.mock('../services/gemini-api', () => ({
   streamGeminiCompletion: vi.fn()
 }))
 
-vi.mock('../services/work-coach-quiz-escalation', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../services/work-coach-quiz-escalation')>()
+vi.mock('../services/work/work-coach-quiz-escalation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/work/work-coach-quiz-escalation')>()
   return {
     ...actual,
     scheduleQuizDeepExplain: vi.fn()

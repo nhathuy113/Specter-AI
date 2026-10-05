@@ -11,13 +11,13 @@
 import { app, BrowserWindow, screen, shell, type Rectangle } from 'electron'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
-import { getSetting, setSetting } from '../services/store'
+import { getSetting, setSetting } from '../services/settings/store'
 import { OVERLAY_DEFAULTS } from '../shared/constants'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
 import { restoreMacOSForegroundApp } from './macos-front-window'
-import { defaultExpandedOverlayBounds, defaultPillOverlayBounds, getOverlayTargetDisplay, isPillSizedBounds } from '../services/overlay-placement'
-import { resolveOverlayFitBounds, type OverlayFitRequest } from '../services/overlay-fit'
+import { defaultExpandedOverlayBounds, defaultPillOverlayBounds, getOverlayTargetDisplay, isPillSizedBounds } from '../services/ui/overlay-placement'
+import { resolveOverlayFitBounds, type OverlayFitRequest } from '../services/ui/overlay-fit'
 
 let overlayWindow: BrowserWindow | null = null
 let backgroundWatchMode = false
@@ -335,7 +335,7 @@ export function fitOverlayToContent(req: OverlayFitRequest): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
 
   const display = getOverlayTargetDisplay()
-  const target: import('../services/overlay-placement').OverlayDisplayLike = {
+  const target: import('../services/ui/overlay-placement').OverlayDisplayLike = {
     id: display.id,
     label: display.label,
     bounds: display.bounds,

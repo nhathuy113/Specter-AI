@@ -3,9 +3,9 @@ import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import { resolveAssistantRequest } from '../services/context-router'
-import { runWorkCoachQuizVision } from '../services/work-coach-runner'
-import { buildCoachSystemPrompt } from '../services/coach-prompt'
+import { resolveAssistantRequest } from '../services/context/context-router'
+import { runWorkCoachQuizVision } from '../services/work/work-coach-runner'
+import { buildCoachSystemPrompt } from '../services/coach/coach-prompt'
 
 loadEnv({ path: resolve(__dirname, '../../.env') })
 

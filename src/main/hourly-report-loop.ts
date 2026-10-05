@@ -6,9 +6,9 @@ import {
   buildHourlyReportSummary,
   formatHourlyReportJson,
   formatHourlyReportMarkdown
-} from '../services/activity-journal-hourly-report'
-import { getJournalEntries } from '../services/activity-journal'
-import { getSetting } from '../services/store'
+} from '../services/journal/activity-journal-hourly-report'
+import { getJournalEntries } from '../services/journal/activity-journal'
+import { getSetting } from '../services/settings/store'
 
 let reportTimer: ReturnType<typeof setTimeout> | null = null
 let lastReportEndMs = 0

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
-import { resetQuizDeepExplainState } from '../services/work-coach-quiz-escalation'
-import { runWorkCoachQuizVision } from '../services/work-coach-runner'
+import { resetQuizDeepExplainState } from '../services/work/work-coach-quiz-escalation'
+import { runWorkCoachQuizVision } from '../services/work/work-coach-runner'
 
-vi.mock('../services/gemini-api', () => ({
+vi.mock('../services/ai/gemini-api', () => ({
   streamGeminiVisionCompletion: vi.fn(
     async (
       _messages: unknown,

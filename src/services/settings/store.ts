@@ -1,0 +1,430 @@
+// Persistent settings store using electron-store
+// API keys are encrypted via Electron safeStorage (OS keychain / DPAPI)
+import Store from 'electron-store'
+import { safeStorage } from 'electron'
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT, DEFAULT_COACH_SYSTEM_PROMPT, ASSISTANT_MODES, PERCEPTION_MODES } from '../../shared/constants'
+import type { UserSettings, Conversation, ActivityJournalEntry } from '../../shared/types'
+
+// --- Sensitive key handling via safeStorage ---
+// These keys are stored as base64-encoded safeStorage-encrypted blobs,
+// NOT in plaintext. safeStorage uses the OS credential store:
+//   macOS → Keychain
+//   Windows → DPAPI (tied to user account)
+//   Linux → libsecret / gnome-keyring
+const SENSITIVE_KEYS = new Set(['openrouterApiKey', 'openaiApiKey', 'geminiApiKey', 'whisperApiKey'])
+
+function encryptSensitive(value: string): string {
+  if (!value) return ''
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(value)
+      return encrypted.toString('base64')
+    }
+  } catch (err) {
+    console.warn('[Specter] safeStorage encryption unavailable, storing as-is:', err)
+  }
+  // Fallback: store raw (better than crashing; logs a warning)
+  return value
+}
+
+function decryptSensitive(stored: string): string {
+  if (!stored) return ''
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      const buffer = Buffer.from(stored, 'base64')
+      return safeStorage.decryptString(buffer)
+    }
+  } catch {
+    // If decryption fails, the value was likely stored unencrypted (pre-migration)
+    // Return as-is so the user doesn't lose their key
+  }
+  return stored
+}
+
+// --- Settings value validation ---
+
+const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
+  aiProvider: (v) => typeof v === 'string' && ['openrouter', 'openai', 'gemini', 'codex'].includes(v),
+  openrouterApiKey: (v) => typeof v === 'string' && v.length <= 500,
+  openaiApiKey: (v) => typeof v === 'string' && v.length <= 500,
+  geminiApiKey: (v) => typeof v === 'string' && v.length <= 500,
+  whisperApiKey: (v) => typeof v === 'string' && v.length <= 500,
+  selectedModel: (v) => typeof v === 'string' && v.length <= 200 && /^[a-zA-Z0-9/_.:@-]+$/.test(v),
+  openaiModel: (v) => typeof v === 'string' && v.length <= 100 && /^[a-zA-Z0-9_.:-]+$/.test(v),
+  geminiModel: (v) => typeof v === 'string' && v.length <= 100 && /^[a-zA-Z0-9_.:-]+$/.test(v),
+  codexModel: (v) => typeof v === 'string' && v.length <= 100 && /^[a-zA-Z0-9_.:-]+$/.test(v),
+  overlayOpacity: (v) => typeof v === 'number' && v >= 0.3 && v <= 1.0,
+  overlayPosition: (v) =>
+    typeof v === 'object' && v !== null &&
+    'x' in v && 'y' in v &&
+    typeof (v as Record<string, unknown>).x === 'number' &&
+    typeof (v as Record<string, unknown>).y === 'number',
+  overlaySize: (v) =>
+    typeof v === 'object' && v !== null &&
+    'width' in v && 'height' in v &&
+    typeof (v as Record<string, unknown>).width === 'number' &&
+    typeof (v as Record<string, unknown>).height === 'number' &&
+    (v as Record<string, number>).width >= 200 && (v as Record<string, number>).width <= 4000 &&
+    (v as Record<string, number>).height >= 200 && (v as Record<string, number>).height <= 4000,
+  hotkeys: (v) => typeof v === 'object' && v !== null,
+  autoCapture: (v) => typeof v === 'boolean',
+  autoCaptureInterval: (v) => typeof v === 'number' && v >= 5 && v <= 3600,
+  continuousCoach: (v) => typeof v === 'boolean',
+  detectIntervalSec: (v) => typeof v === 'number' && v >= 3 && v <= 300,
+  coachCooldownSec: (v) => typeof v === 'number' && v >= 5 && v <= 300,
+  fullAutoMode: (v) => typeof v === 'boolean',
+  activityJournal: (v) => typeof v === 'boolean',
+  journalIntervalSec: (v) => typeof v === 'number' && v >= 30 && v <= 300,
+  journalSmartCrop: (v) => typeof v === 'boolean',
+  activityJournalLog: (v) => {
+    if (!Array.isArray(v)) return false
+    return v.every((item) => {
+      if (typeof item !== 'object' || item === null) return false
+      const e = item as Record<string, unknown>
+      return (
+        typeof e.id === 'string' &&
+        typeof e.minuteKey === 'string' &&
+        typeof e.timestamp === 'number' &&
+        typeof e.appName === 'string' &&
+        typeof e.durationSec === 'number'
+      )
+    })
+  },
+  perceptionMode: (v) => typeof v === 'string' && (PERCEPTION_MODES as readonly string[]).includes(v),
+  coachSystemPrompt: (v) => typeof v === 'string' && v.length <= 10000,
+  maxTranscriptLength: (v) => typeof v === 'number' && v >= 100 && v <= 100000,
+  systemPrompt: (v) => typeof v === 'string' && v.length <= 10000,
+  language: (v) => typeof v === 'string' && v.length <= 10 && /^[a-zA-Z-]+$/.test(v),
+  theme: (v) => typeof v === 'string' && ['dark', 'light', 'glass'].includes(v),
+  conversations: (v) => Array.isArray(v),
+  playbooks: (v) => {
+    if (!Array.isArray(v)) return false
+    return v.every((item) => {
+      if (typeof item !== 'object' || item === null) return false
+      const p = item as Record<string, unknown>
+      if (typeof p.id !== 'string' || typeof p.name !== 'string' || typeof p.content !== 'string') return false
+      if (typeof p.isActive !== 'boolean' || typeof p.createdAt !== 'number') return false
+      if (p.modes !== undefined) {
+        if (!Array.isArray(p.modes)) return false
+        if (!p.modes.every((m) => typeof m === 'string' && (ASSISTANT_MODES as readonly string[]).includes(m))) {
+          return false
+        }
+      }
+      return true
+    })
+  },
+  assistantMode: (v) => typeof v === 'string' && (ASSISTANT_MODES as readonly string[]).includes(v),
+  whisperProvider: (v) => typeof v === 'string' && ['groq', 'openai', 'custom'].includes(v),
+  whisperApiUrl: (v) => typeof v === 'string' && v.length <= 500,
+  whisperModel: (v) => typeof v === 'string' && v.length <= 200,
+  autoHideDelay: (v) => typeof v === 'number' && v >= 0 && v <= 300,
+  smartCrop: (v) => typeof v === 'boolean',
+  workAreaCaptureEnabled: (v) => typeof v === 'boolean',
+  workAreaDisplayId: (v) => typeof v === 'number' && v >= 0,
+  workCoachSession: (v) => {
+    if (v === null || v === undefined) return true
+    if (typeof v !== 'object') return false
+    const s = v as Record<string, unknown>
+    const base =
+      typeof s.sessionKey === 'string' && typeof s.thread === 'string' && typeof s.updatedAt === 'number'
+    if (!base) return false
+    if (s.codeFingerprintAtLastCoach !== undefined && typeof s.codeFingerprintAtLastCoach !== 'string') {
+      return false
+    }
+    if (s.stuckRetryCount !== undefined && typeof s.stuckRetryCount !== 'number') {
+      return false
+    }
+    if (s.cursorCoachReply !== undefined && typeof s.cursorCoachReply !== 'string') {
+      return false
+    }
+    if (s.lastSuggestedSnippet !== undefined && typeof s.lastSuggestedSnippet !== 'string') {
+      return false
+    }
+    if (s.lastCoachStepSummary !== undefined && typeof s.lastCoachStepSummary !== 'string') {
+      return false
+    }
+    if (
+      s.lastReviewOutcome !== undefined &&
+      s.lastReviewOutcome !== 'unchanged' &&
+      s.lastReviewOutcome !== 'approved' &&
+      s.lastReviewOutcome !== 'rejected'
+    ) {
+      return false
+    }
+    return true
+  }
+}
+
+/** Returns the set of allowed settings keys */
+export function getAllowedSettingsKeys(): ReadonlySet<string> {
+  return new Set(Object.keys(SETTINGS_KEY_VALIDATORS))
+}
+
+/** Validate a setting key + value. Returns true if valid. */
+export function isValidSetting(key: string, value: unknown): boolean {
+  const validator = SETTINGS_KEY_VALIDATORS[key]
+  if (!validator) return false // unknown key → reject
+  return validator(value)
+}
+
+// --- System prompt migration ---
+// Old default prompts that shipped with previous versions.
+// If a user's stored systemPrompt matches one of these exactly, it's the
+// factory default (not a user customisation) and should be upgraded.
+const STALE_DEFAULT_PROMPTS = [
+  `You are a real-time AI assistant helping the user during meetings, interviews, and work sessions.
+You have access to what's on their screen and what's being said.
+Give concise, immediately actionable responses.
+Format responses for quick reading: use short paragraphs and bullet points.
+Never reveal that you are an AI assistant unless directly asked.`,
+  `You are a real-time AI copilot for meetings, interviews, and work sessions.
+You have access to what's on the user's screen and what's being said.
+
+Rules:
+- Answer ONLY what is asked. Be direct and concise.
+- Do NOT add unnecessary explanations or filler.
+- For MCQs: give only the correct answer letter/option. Do not rewrite the question.
+- For coding questions: give optimal code, a 2-line explanation, and time/space complexity.
+- For behavioral/situational questions: give a structured response in 2-3 sentences.
+- For technical questions: give a clear, accurate answer in 2-4 sentences.
+- Format for quick reading: short paragraphs and bullet points.
+- Never reveal you are an AI assistant unless directly asked.`
+]
+
+/**
+ * Migrate settings that may be stale from a previous version.
+ * Called once after the store is created / loaded.
+ */
+function migrateSettings(s: Store<Record<string, unknown>>): void {
+  // 1. System prompt: replace old defaults with current DEFAULT_SYSTEM_PROMPT
+  const currentPrompt = s.get('systemPrompt') as string | undefined
+  if (currentPrompt && STALE_DEFAULT_PROMPTS.includes(currentPrompt.trim())) {
+    s.set('systemPrompt', DEFAULT_SYSTEM_PROMPT)
+    console.info('[Specter] Migrated system prompt to new default')
+  }
+
+  const hotkeys = s.get('hotkeys') as Record<string, string> | undefined
+  if (hotkeys && !hotkeys.activeTabAsk) {
+    s.set('hotkeys', { ...DEFAULT_SETTINGS.hotkeys, ...hotkeys })
+    console.info('[Specter] Migrated hotkeys — added activeTabAsk (double ⌘/)')
+  }
+
+  const opacity = s.get('overlayOpacity') as number | undefined
+  if (opacity === 0.85) {
+    s.set('overlayOpacity', DEFAULT_SETTINGS.overlayOpacity)
+    console.info('[Specter] Migrated overlay opacity → macOS glass default (95%)')
+  }
+}
+
+// --- electron-store setup ---
+
+const schema = {
+  aiProvider: { type: 'string' as const, default: DEFAULT_SETTINGS.aiProvider },
+  openrouterApiKey: { type: 'string' as const, default: DEFAULT_SETTINGS.openrouterApiKey },
+  selectedModel: { type: 'string' as const, default: DEFAULT_SETTINGS.selectedModel },
+  openaiApiKey: { type: 'string' as const, default: DEFAULT_SETTINGS.openaiApiKey },
+  openaiModel: { type: 'string' as const, default: DEFAULT_SETTINGS.openaiModel },
+  geminiApiKey: { type: 'string' as const, default: DEFAULT_SETTINGS.geminiApiKey },
+  geminiModel: { type: 'string' as const, default: DEFAULT_SETTINGS.geminiModel },
+  codexModel: { type: 'string' as const, default: DEFAULT_SETTINGS.codexModel },
+  overlayOpacity: { type: 'number' as const, default: DEFAULT_SETTINGS.overlayOpacity, minimum: 0.3, maximum: 1.0 },
+  overlayPosition: {
+    type: 'object' as const,
+    properties: {
+      x: { type: 'number' as const },
+      y: { type: 'number' as const }
+    },
+    default: DEFAULT_SETTINGS.overlayPosition
+  },
+  overlaySize: {
+    type: 'object' as const,
+    properties: {
+      width: { type: 'number' as const },
+      height: { type: 'number' as const }
+    },
+    default: DEFAULT_SETTINGS.overlaySize
+  },
+  hotkeys: {
+    type: 'object' as const,
+    default: DEFAULT_SETTINGS.hotkeys
+  },
+  autoCapture: { type: 'boolean' as const, default: DEFAULT_SETTINGS.autoCapture },
+  autoCaptureInterval: { type: 'number' as const, default: DEFAULT_SETTINGS.autoCaptureInterval },
+  continuousCoach: { type: 'boolean' as const, default: DEFAULT_SETTINGS.continuousCoach },
+  detectIntervalSec: { type: 'number' as const, default: DEFAULT_SETTINGS.detectIntervalSec },
+  coachCooldownSec: { type: 'number' as const, default: DEFAULT_SETTINGS.coachCooldownSec },
+  assistantMode: { type: 'string' as const, default: DEFAULT_SETTINGS.assistantMode },
+  perceptionMode: { type: 'string' as const, default: DEFAULT_SETTINGS.perceptionMode },
+  coachSystemPrompt: { type: 'string' as const, default: DEFAULT_COACH_SYSTEM_PROMPT },
+  maxTranscriptLength: { type: 'number' as const, default: DEFAULT_SETTINGS.maxTranscriptLength },
+  systemPrompt: { type: 'string' as const, default: DEFAULT_SETTINGS.systemPrompt },
+  language: { type: 'string' as const, default: DEFAULT_SETTINGS.language },
+  theme: { type: 'string' as const, default: DEFAULT_SETTINGS.theme },
+  conversations: { type: 'array' as const, default: [] },
+  playbooks: { type: 'array' as const, default: [] },
+  whisperProvider: { type: 'string' as const, default: DEFAULT_SETTINGS.whisperProvider },
+  whisperApiKey: { type: 'string' as const, default: DEFAULT_SETTINGS.whisperApiKey },
+  whisperApiUrl: { type: 'string' as const, default: DEFAULT_SETTINGS.whisperApiUrl },
+  whisperModel: { type: 'string' as const, default: DEFAULT_SETTINGS.whisperModel },
+  autoHideDelay: { type: 'number' as const, default: DEFAULT_SETTINGS.autoHideDelay },
+  smartCrop: { type: 'boolean' as const, default: DEFAULT_SETTINGS.smartCrop },
+  fullAutoMode: { type: 'boolean' as const, default: DEFAULT_SETTINGS.fullAutoMode },
+  activityJournal: { type: 'boolean' as const, default: DEFAULT_SETTINGS.activityJournal },
+  journalIntervalSec: { type: 'number' as const, default: DEFAULT_SETTINGS.journalIntervalSec },
+  journalSmartCrop: { type: 'boolean' as const, default: DEFAULT_SETTINGS.journalSmartCrop },
+  activityJournalLog: { type: 'array' as const, default: [] }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let store: Store<any> | null = null
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getStore(): Store<any> {
+  if (!store) {
+    try {
+      store = new Store({
+        name: 'specter-settings',
+        schema
+        // NOTE: encryptionKey removed — it was a hardcoded string visible in source,
+        // providing zero real security. Sensitive values (API keys) are now encrypted
+        // individually via Electron safeStorage (OS-level encryption).
+      })
+      migrateSettings(store)
+    } catch (err) {
+      // Config file is corrupted (e.g. leftover encrypted blob from a previous
+      // encryptionKey-based store, or binary garbage). Delete it and retry.
+      console.warn('[Specter] Store config corrupted, resetting to defaults:', err)
+      const ElectronStore = Store as typeof Store & { new(opts: Record<string, unknown>): Store }
+      // Create a temporary store just to get the file path, then delete the file
+      try {
+        const tempStore = new ElectronStore({ name: 'specter-settings' })
+        const configPath = tempStore.path
+        const fs = require('fs')
+        if (fs.existsSync(configPath)) {
+          fs.unlinkSync(configPath)
+          console.warn(`[Specter] Deleted corrupted config: ${configPath}`)
+        }
+      } catch {
+        // If we can't even get the path, try to delete by known name
+        try {
+          const { app } = require('electron')
+          const path = require('path')
+          const fs = require('fs')
+          const configPath = path.join(app.getPath('userData'), 'specter-settings.json')
+          if (fs.existsSync(configPath)) {
+            fs.unlinkSync(configPath)
+            console.warn(`[Specter] Deleted corrupted config (fallback): ${configPath}`)
+          }
+        } catch (innerErr) {
+          console.error('[Specter] Failed to delete corrupted config:', innerErr)
+        }
+      }
+      // Now create a fresh store with defaults
+      store = new Store({
+        name: 'specter-settings',
+        schema
+      })
+    }
+  }
+  return store
+}
+
+export function getSetting<T>(key: string): T {
+  const raw = getStore().get(key) as T
+  // Decrypt sensitive keys on read
+  if (SENSITIVE_KEYS.has(key) && typeof raw === 'string') {
+    return decryptSensitive(raw) as T
+  }
+  return raw
+}
+
+export function setSetting(key: string, value: unknown): void {
+  // Validate before writing
+  if (!isValidSetting(key, value)) {
+    console.warn(`[Specter] Rejected invalid setting: ${key}`)
+    return
+  }
+  // Encrypt sensitive keys on write
+  if (SENSITIVE_KEYS.has(key) && typeof value === 'string') {
+    getStore().set(key, encryptSensitive(value))
+  } else {
+    getStore().set(key, value)
+  }
+}
+
+export function getAllSettings(): UserSettings {
+  const s = getStore()
+  return {
+    aiProvider: s.get('aiProvider') as UserSettings['aiProvider'],
+    openrouterApiKey: decryptSensitive(s.get('openrouterApiKey') as string),
+    selectedModel: s.get('selectedModel') as string,
+    openaiApiKey: decryptSensitive(s.get('openaiApiKey') as string),
+    openaiModel: s.get('openaiModel') as string,
+    geminiApiKey: decryptSensitive(s.get('geminiApiKey') as string),
+    geminiModel: s.get('geminiModel') as string,
+    codexModel: s.get('codexModel') as string,
+    overlayOpacity: s.get('overlayOpacity') as number,
+    overlayPosition: s.get('overlayPosition') as { x: number; y: number },
+    overlaySize: s.get('overlaySize') as { width: number; height: number },
+    hotkeys: s.get('hotkeys') as UserSettings['hotkeys'],
+    autoCapture: s.get('autoCapture') as boolean,
+    autoCaptureInterval: s.get('autoCaptureInterval') as number,
+    continuousCoach: s.get('continuousCoach') as boolean,
+    detectIntervalSec: s.get('detectIntervalSec') as number,
+    coachCooldownSec: s.get('coachCooldownSec') as number,
+    fullAutoMode: s.get('fullAutoMode') as boolean,
+    activityJournal: s.get('activityJournal') as boolean,
+    journalIntervalSec: s.get('journalIntervalSec') as number,
+    journalSmartCrop: s.get('journalSmartCrop') as boolean,
+    assistantMode: s.get('assistantMode') as UserSettings['assistantMode'],
+    perceptionMode: s.get('perceptionMode') as UserSettings['perceptionMode'],
+    coachSystemPrompt: s.get('coachSystemPrompt') as string,
+    maxTranscriptLength: s.get('maxTranscriptLength') as number,
+    systemPrompt: s.get('systemPrompt') as string,
+    language: s.get('language') as string,
+    theme: s.get('theme') as UserSettings['theme'],
+    whisperProvider: s.get('whisperProvider') as UserSettings['whisperProvider'],
+    whisperApiKey: decryptSensitive(s.get('whisperApiKey') as string),
+    whisperApiUrl: s.get('whisperApiUrl') as string,
+    whisperModel: s.get('whisperModel') as string,
+    autoHideDelay: s.get('autoHideDelay') as number,
+    smartCrop: s.get('smartCrop') as boolean,
+    workAreaCaptureEnabled: s.get('workAreaCaptureEnabled') as boolean,
+    workAreaDisplayId: s.get('workAreaDisplayId') as number
+  }
+}
+
+export function resetSettings(): void {
+  getStore().clear()
+}
+
+// Conversation management
+
+export function getConversations(): Conversation[] {
+  return getSetting<Conversation[]>('conversations') || []
+}
+
+export function saveConversation(conversation: Conversation): void {
+  const conversations = getConversations()
+  const existingIdx = conversations.findIndex(c => c.id === conversation.id)
+  if (existingIdx >= 0) {
+    conversations[existingIdx] = conversation
+  } else {
+    conversations.unshift(conversation) // newest first
+  }
+  // Keep max 100 conversations
+  if (conversations.length > 100) {
+    conversations.splice(100)
+  }
+  // Bypass validation for conversations array (internal use)
+  getStore().set('conversations', conversations)
+}
+
+export function deleteConversation(id: string): void {
+  const conversations = getConversations().filter(c => c.id !== id)
+  getStore().set('conversations', conversations)
+}
+
+export function clearConversations(): void {
+  getStore().set('conversations', [])
+}

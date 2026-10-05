@@ -5,7 +5,7 @@ import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOv
 import { createTray, destroyTray } from './tray'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
-import { bootstrapSettingsFromEnv, loadEnvFiles } from '../services/env-bootstrap'
+import { bootstrapSettingsFromEnv, loadEnvFiles } from '../services/settings/env-bootstrap'
 
 loadEnvFiles()
 

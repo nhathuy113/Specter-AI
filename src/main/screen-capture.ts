@@ -8,18 +8,18 @@ import os from 'os'
 import screenshot from 'screenshot-desktop'
 import { screen } from 'electron'
 import type { ScreenCaptureResult, PerceptionMode } from '../shared/types'
-import { captureAccessibilityText } from '../services/accessibility-capture'
-import { resolvePerceptionPlan } from '../services/perception'
-import { getSetting } from '../services/store'
+import { captureAccessibilityText } from '../services/capture/accessibility-capture'
+import { resolvePerceptionPlan } from '../services/capture/perception'
+import { getSetting } from '../services/settings/store'
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import {
   resolveScreenshotScreenIndexForDisplay,
   type DisplayInfo,
   type SmartCropPlan,
   displayForWindow
-} from '../services/display-capture'
-import { resolveSmartCapturePlan } from '../services/smart-capture'
-import { planPinnedWorkDisplay, workAreaCaptureActive } from '../services/work-area-capture'
+} from '../services/capture/display-capture'
+import { resolveSmartCapturePlan } from '../services/capture/smart-capture'
+import { planPinnedWorkDisplay, workAreaCaptureActive } from '../services/capture/work-area-capture'
 import { getOverlayWindow, isOverlayBackgroundWatch, releaseForegroundAfterBackgroundWork, showOverlay } from './overlay-window'
 import { getMacOSFrontWindowInfo, getMacOSBrowserWindows, isSpecterForeground, rememberMacOSForegroundForRestore } from './macos-front-window'
 import { rememberWorkWindow, resolveWorkWindowForCrop } from './work-window-memory'
