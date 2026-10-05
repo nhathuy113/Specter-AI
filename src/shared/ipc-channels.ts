@@ -16,6 +16,7 @@ export const IPC_CHANNELS = {
   WATCH_FRAME_GET: 'watch-frame:get',
   WATCH_FRAME_SET: 'watch-frame:set',
   WATCH_FRAME_PASSTHROUGH: 'watch-frame:passthrough',
+  WATCH_FRAME_ASK: 'watch-frame:ask',
 
   // AI
   AI_CHECK_CONFIG: 'ai:check-config',

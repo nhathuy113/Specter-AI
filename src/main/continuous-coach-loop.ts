@@ -11,7 +11,7 @@ import { resolveBackgroundCaptureParams } from '../services/capture/background-c
 import { getSetting } from '../services/settings/store'
 import { captureScreenText } from './screen-capture'
 import { appendJournalFromCapture, resolveJournalFocusFingerprint } from '../services/journal/activity-journal-capture'
-import { syncOverlayBackgroundMode, shouldRunCoachAutoUi, shouldRunWorkJournal } from './overlay-window'
+import { expandOverlayWindow, syncOverlayBackgroundMode, shouldRunCoachAutoUi, shouldRunWorkJournal } from './overlay-window'
 
 let coachTimer: ReturnType<typeof setInterval> | null = null
 let coachOverlay: BrowserWindow | null = null
@@ -101,17 +101,18 @@ async function coachTimerTick(): Promise<void> {
     }
   }
 
-  if (result.action === 'trigger' && !coachOverlay.isDestroyed() && uiReady) {
-    coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
-      screenText: result.capture?.text?.trim() || result.screenText,
-      timestamp: Date.now(),
-      appName: result.capture?.appName,
-      windowTitle: result.capture?.windowTitle,
-      useVision: !!result.capture?.useVision,
-      screenshot: result.capture?.screenshot,
-      screenChanged: result.screenChanged
-    })
-  }
+  // Auto prompt send is paused. Manual send stays in askWatchFrameCoach.
+  // if (result.action === 'trigger' && !coachOverlay.isDestroyed() && uiReady) {
+  //   coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
+  //     screenText: result.capture?.text?.trim() || result.screenText,
+  //     timestamp: Date.now(),
+  //     appName: result.capture?.appName,
+  //     windowTitle: result.capture?.windowTitle,
+  //     useVision: !!result.capture?.useVision,
+  //     screenshot: result.capture?.screenshot,
+  //     screenChanged: result.screenChanged
+  //   })
+  // }
 }
 
 export function stopContinuousCoach(): void {
@@ -135,6 +136,29 @@ export function startContinuousCoach(overlayWindow: BrowserWindow, intervalSec: 
   coachTimer = setInterval(() => {
     void coachTimerTick()
   }, clampedInterval * 1000)
+}
+
+/** Manual send from the watch frame. Ignores fingerprint and cooldown. */
+export async function askWatchFrameCoach(): Promise<void> {
+  if (!coachOverlay || coachOverlay.isDestroyed()) return
+  expandOverlayWindow(false)
+  const p = resolveBackgroundCaptureParams((key) => getSetting(key))
+  const capture = await captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+    skipAccessibility: p.skipAccessibility,
+    coachVision: p.coachVision
+  })
+  const fingerprint = capture.imageFingerprint || capture.fingerprintText || capture.text
+  if (fingerprint) evaluator.recordCoachTriggered(Date.now(), fingerprint)
+  coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {
+    screenText: capture.text?.trim() || '[SCREENSHOT]',
+    timestamp: Date.now(),
+    appName: capture.appName,
+    windowTitle: capture.windowTitle,
+    useVision: !!capture.useVision,
+    screenshot: capture.screenshot,
+    screenChanged: true,
+    force: true
+  })
 }
 
 /** Run one coach poll immediately after user expands overlay (pill → panel). */

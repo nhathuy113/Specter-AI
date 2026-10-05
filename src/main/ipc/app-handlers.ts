@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow, app, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { getJournalEntries, exportJournalMarkdown, clearJournal } from '../../services/journal/activity-journal'
 import { stopActivityJournal } from '../activity-journal-loop'
-import { stopContinuousCoach, setOverlayCoachStreaming, flushCoachTickOnExpand } from '../continuous-coach-loop'
+import { askWatchFrameCoach, stopContinuousCoach, setOverlayCoachStreaming, flushCoachTickOnExpand } from '../continuous-coach-loop'
 import { getWorkAutoModeStatus, toggleWorkAutoMode } from '../work-auto-mode'
 import { expandOverlayWindow, showOverlayPill, fitOverlayToContent } from '../overlay-window'
 import { APP_VERSION } from '../../shared/constants'
@@ -44,6 +44,10 @@ export function registerAppIpcHandlers(overlayWindow: BrowserWindow, stopAutoCap
 
   ipcMain.on(IPC_CHANNELS.ACTIVITY_JOURNAL_CLEAR, () => {
     clearJournal()
+  })
+
+  ipcMain.on(IPC_CHANNELS.WATCH_FRAME_ASK, () => {
+    void askWatchFrameCoach()
   })
 
   ipcMain.on(IPC_CHANNELS.OVERLAY_EXPAND, () => {

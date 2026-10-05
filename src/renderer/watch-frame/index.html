@@ -24,10 +24,26 @@
       font: 600 12px/1.4 -apple-system, sans-serif;
       pointer-events: none;
     }
+    #ask {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      border: 0;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #00e887;
+      color: #052e22;
+      font: 700 12px/1.2 -apple-system, sans-serif;
+      pointer-events: auto;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <div id="frame"><div id="label">Specter đang xem — kéo nhãn để di chuyển, kéo viền để chỉnh</div></div>
+  <div id="frame">
+    <div id="label">Specter đang xem — kéo nhãn để di chuyển, kéo viền để chỉnh</div>
+    <button id="ask" type="button">Gửi</button>
+  </div>
   <script type="module" src="./frame.ts"></script>
 </body>
 </html>

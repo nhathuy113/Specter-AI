@@ -22,13 +22,28 @@ window.addEventListener('pointermove', event => {
 // Electron forwards mousemove while click-through is enabled.
 window.addEventListener('mousemove', event => {
   if (dragging) return
+  if (isAsk(event.target)) {
+    passthrough(false)
+    document.body.style.cursor = 'pointer'
+    return
+  }
   const edge = hitWatchFrame(event.clientX, event.clientY, window.innerWidth, window.innerHeight)
   passthrough(edge === null)
   document.body.style.cursor = edge === 'move' ? 'move' : edge ? `${edge}-resize` : 'default'
 })
 
+function isAsk(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('#ask')
+}
+
 window.addEventListener('pointerdown', event => {
   if (event.button !== 0) return
+  if (isAsk(event.target)) {
+    event.preventDefault()
+    passthrough(false)
+    window.specterAPI.askWatchFrame()
+    return
+  }
   const edge = hitWatchFrame(event.clientX, event.clientY, window.innerWidth, window.innerHeight)
   if (!edge) return
   event.preventDefault()

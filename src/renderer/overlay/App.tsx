@@ -621,13 +621,15 @@ export default function App() {
     useVision?: boolean
     screenshot?: string
     screenChanged?: boolean
+    force?: boolean
   }) => {
-    if (isMinimizedRef.current) return
+    if (isMinimizedRef.current && !payload.force) return
     if (!payload.screenText.trim()) return
     if (!(await ensureAiConfigured())) return
 
     if (isStreamingRef.current) {
-      return
+      if (!payload.force) return
+      window.specterAPI?.cancelAI()
     }
 
     isCoachQueryRef.current = true

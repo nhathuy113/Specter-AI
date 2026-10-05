@@ -86,6 +86,7 @@ export interface SpecterAPI {
     useVision?: boolean
     screenshot?: string
     screenChanged?: boolean
+    force?: boolean
   }) => void) => () => void
   setCoachStreaming: (streaming: boolean) => void
 
@@ -116,6 +117,7 @@ export interface SpecterAPI {
   getWatchFrameBounds: () => Promise<{ x: number; y: number; width: number; height: number }>
   setWatchFrameBounds: (bounds: { x: number; y: number; width: number; height: number }) => void
   setWatchFramePassthrough: (ignore: boolean) => void
+  askWatchFrame: () => void
 }
 
 // --- Type guard helpers for IPC callback data ---
@@ -337,7 +339,8 @@ const api: SpecterAPI = {
             windowTitle: typeof d.windowTitle === 'string' ? d.windowTitle : undefined,
             useVision: typeof d.useVision === 'boolean' ? d.useVision : undefined,
             screenshot: typeof d.screenshot === 'string' ? d.screenshot : undefined,
-            screenChanged: typeof d.screenChanged === 'boolean' ? d.screenChanged : undefined
+            screenChanged: typeof d.screenChanged === 'boolean' ? d.screenChanged : undefined,
+            force: d.force === true
           })
         }
       }
@@ -416,7 +419,8 @@ const api: SpecterAPI = {
   setWatchFrameDragging: (active) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_DRAGGING, active),
   getWatchFrameBounds: () => ipcRenderer.invoke(IPC_CHANNELS.WATCH_FRAME_GET),
   setWatchFrameBounds: (bounds) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_SET, bounds),
-  setWatchFramePassthrough: (ignore) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_PASSTHROUGH, ignore)
+  setWatchFramePassthrough: (ignore) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_PASSTHROUGH, ignore),
+  askWatchFrame: () => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_ASK)
 }
 
 contextBridge.exposeInMainWorld('specterAPI', api)
