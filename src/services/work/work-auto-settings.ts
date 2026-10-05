@@ -20,6 +20,7 @@ export function isWorkAutoModeEnabled(fullAutoMode: boolean, continuousCoach: bo
 
 /** Settings applied when double ⌘/ enables work auto mode. */
 export function buildWorkAutoEnablePatch(existing: {
+  workAreaCaptureEnabled?: boolean | null
   workAreaDisplayId?: number | null
   detectIntervalSec?: number | null
   coachCooldownSec?: number | null

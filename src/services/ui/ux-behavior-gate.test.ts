@@ -86,14 +86,15 @@ describe('ux behavior gate', () => {
     expect(IPC_CHANNELS.AI_COACH_TRIPLE_PANEL).toBe('ai:coach-triple-panel')
     expect(IPC_CHANNELS.AI_COACH_TRIPLE_DONE).toBe('ai:coach-triple-done')
     const runner = readFileSync(resolve(__dirname, '../work/work-coach-runner.ts'), 'utf-8')
-    expect(runner).toContain('WORK_COACH_GEMINI_LITE')
-    expect(runner).toContain('WORK_COACH_GEMINI_36')
-    expect(runner).toContain('includeCursor')
+    const orchestrator = readFileSync(resolve(__dirname, '../work/work-coach-orchestrator.ts'), 'utf-8')
+    expect(orchestrator).toContain('WORK_COACH_GEMINI_LITE')
+    expect(orchestrator).toContain('WORK_COACH_GEMINI_36')
+    expect(orchestrator).toContain('includeCursor')
     expect(runner).toContain('completeCursorWorkCoach')
   })
 
   it('keeps coach screen-only (no journal bleed in coach mode)', () => {
-    const ipc = readFileSync(resolve(__dirname, '../../main/ipc-handlers.ts'), 'utf-8')
+    const ipc = readFileSync(resolve(__dirname, '../../main/ipc/ai-handlers.ts'), 'utf-8')
     expect(ipc).toMatch(/effectiveCoachMode\s*\?\s*''\s*:\s*journalEnabled/)
   })
 

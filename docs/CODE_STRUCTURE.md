@@ -10,6 +10,7 @@ The top-level source folders follow Electron's process boundaries:
   process boundaries.
 - `src/services`: application logic grouped by responsibility.
 - `src/e2e`: cross-feature pipeline tests and live fixtures.
+- `src/architecture`: automated dependency and IPC contract gates.
 
 ## Service modules
 
@@ -48,3 +49,55 @@ Resolve fixture paths relative to the test file and update them when moving it.
 Run `pnpm typecheck`, `pnpm test:all`, `pnpm test:gate` and `pnpm build` after
 moving modules. `pnpm test:live` uses external APIs or native capture and is
 separate from the offline suite.
+
+## SOLID boundaries
+
+`src/main/ipc-handlers.ts` is a composition root. Registration is split into AI,
+capture/audio, settings, data and app/window handlers under `src/main/ipc`.
+Validation and rate limiting are independent policies. The auto-capture loop
+receives capture, configuration, lifecycle and publication capabilities rather
+than importing windows or the settings store.
+
+AI clients implement the small completion contract in `services/ai/contracts.ts`.
+`providers.ts` wires concrete clients into the gateway; the gateway owns the
+single terminal outcome contract. Provider configuration and pricing are separate
+from IPC. Each HTTP request owns its abort controller, so finishing one parallel
+panel cannot remove another panel's cancellation handle.
+
+Work Coach orchestration consumes completion, Cursor, persistence and panel ports.
+Its pure core does not import Electron, SDKs or the settings store. The existing
+runner functions adapt these ports for main-process callers. Quiz schedulers own
+their timers and generation tokens; user activity or a newer question invalidates
+older Lite/deep results. Per-target request ownership similarly prevents obsolete
+AI queries from publishing or saving results.
+
+Session identity, prompt formatting, session transitions and persistence wiring
+have separate modules. `createWorkCoachSession` takes a repository and clock.
+Session transitions retain prior hints only when the problem key matches. Existing
+exports remain available through the session facade for compatibility.
+
+Extend a concrete adapter or a policy in its owning module. Avoid forcing native
+client APIs into domain interfaces, or creating interfaces for every pure helper.
+
+## Preventing regressions
+
+Run `pnpm check` for type checking, the complete offline test suite and the Electron
+build. `pnpm test:architecture` runs the architecture gates alone. The regression
+workflow runs `pnpm check` for pushes and pull requests with the pinned pnpm version
+and frozen lockfile.
+
+Architecture tests enforce these rules:
+
+- Shared modules cannot import application layers, and services cannot import
+  main/preload/renderer code at runtime.
+- Domain cores cannot reach Electron, provider SDKs or persistence adapters,
+  including through an intermediate dependency.
+- Renderer runtime dependencies cannot reach native APIs or provider clients.
+- Service modules cannot introduce runtime dependency cycles.
+- Every preload send/invoke must have exactly one main handler of the matching
+  registration kind.
+
+Behavior tests cover parallel cancellation, one terminal stream outcome, panel
+failure isolation, disposed targets, stale quiz results, session isolation,
+context isolation and auto-capture overlap/stop behavior. Live provider and native
+capture probes remain separate from these deterministic checks.

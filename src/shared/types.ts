@@ -47,6 +47,8 @@ export interface UserSettings {
   // UX
   autoHideDelay: number // seconds, 0 = disabled
   smartCrop: boolean    // capture active window only (vs full screen)
+  workAreaCaptureEnabled: boolean
+  workAreaDisplayId: number
 }
 
 export interface OpenRouterModel {
@@ -115,7 +117,7 @@ export interface CostEstimate {
 export interface ScreenMetadata {
   appName?: string
   windowTitle?: string
-  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  textSource?: ScreenCaptureResult['textSource']
   displayCount?: number
 }
 
@@ -131,7 +133,7 @@ export interface ActivityJournalEntry {
   durationSec: number
   /** OCR character count from smart-crop capture */
   ocrChars?: number
-  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  textSource?: ScreenCaptureResult['textSource']
   capturePlan?: 'window-crop' | 'display-full'
 }
 

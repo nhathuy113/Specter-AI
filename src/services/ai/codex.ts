@@ -1,13 +1,10 @@
+import type { StreamCallbacks } from './contracts'
 // Codex CLI bridge — uses the user's local Codex login/ChatGPT plan.
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 
-let currentCodexProcess: ChildProcessWithoutNullStreams | null = null
+const activeProcesses = new Set<ChildProcessWithoutNullStreams>()
 
-export interface CodexStreamCallbacks {
-  onChunk: (content: string) => void
-  onDone: () => void
-  onError: (error: string) => void
-}
+export type CodexStreamCallbacks = StreamCallbacks
 
 function codexCommand(): string {
   return process.platform === 'win32' ? 'codex.cmd' : 'codex'
@@ -79,7 +76,7 @@ export async function streamCodexCompletion(
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
     })
-    currentCodexProcess = child
+    activeProcesses.add(child)
 
     const finishWithError = (message: string) => {
       if (failed || completed) return
@@ -130,6 +127,7 @@ export async function streamCodexCompletion(
     })
 
     child.on('error', (err) => {
+      activeProcesses.delete(child)
       finishWithError(
         err.message.includes('ENOENT')
           ? 'Codex CLI was not found. Install it, run `codex login`, then choose Codex Plan again.'
@@ -140,7 +138,7 @@ export async function streamCodexCompletion(
 
     child.on('close', (code) => {
       if (stdoutBuffer.trim()) handleLine(stdoutBuffer)
-      currentCodexProcess = null
+      activeProcesses.delete(child)
 
       if (!failed && !completed) {
         const detail = stderrBuffer.trim().split(/\r?\n/).filter(Boolean).pop()
@@ -158,8 +156,6 @@ export async function streamCodexCompletion(
 }
 
 export function cancelCodexStream(): void {
-  if (currentCodexProcess) {
-    currentCodexProcess.kill()
-    currentCodexProcess = null
-  }
+  for (const child of activeProcesses) child.kill()
+  activeProcesses.clear()
 }

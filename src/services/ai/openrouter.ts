@@ -1,10 +1,12 @@
+import { createStreamScope } from './stream-lifecycle'
+import type { StreamCallbacks as CompletionCallbacks } from './contracts'
 // OpenRouter API client — OpenAI-compatible with streaming support
 import OpenAI from 'openai'
 import { OPENROUTER_BASE_URL, OPENROUTER_REFERER, OPENROUTER_TITLE } from '../../shared/constants'
 import type { OpenRouterModel } from '../../shared/types'
 
 let client: OpenAI | null = null
-let currentAbortController: AbortController | null = null
+const streams = createStreamScope()
 
 export function initClient(apiKey: string): OpenAI {
   client = new OpenAI({
@@ -22,11 +24,7 @@ export function getClient(): OpenAI | null {
   return client
 }
 
-export interface StreamCallbacks {
-  onChunk: (content: string) => void
-  onDone: () => void
-  onError: (error: string) => void
-}
+export type StreamCallbacks = CompletionCallbacks
 
 export async function streamCompletion(
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
@@ -36,7 +34,7 @@ export async function streamCompletion(
   maxTokens = 1500
 ): Promise<void> {
   const ai = initClient(apiKey)
-  currentAbortController = new AbortController()
+  const controller = streams.begin()
 
   try {
     const stream = await ai.chat.completions.create(
@@ -46,7 +44,7 @@ export async function streamCompletion(
         max_tokens: maxTokens,
         stream: true
       },
-      { signal: currentAbortController.signal }
+      { signal: controller.signal }
     )
 
     for await (const chunk of stream) {
@@ -64,15 +62,12 @@ export async function streamCompletion(
     const message = err instanceof Error ? err.message : 'Unknown error occurred'
     callbacks.onError(message)
   } finally {
-    currentAbortController = null
+    streams.finish(controller)
   }
 }
 
 export function cancelStream(): void {
-  if (currentAbortController) {
-    currentAbortController.abort()
-    currentAbortController = null
-  }
+  streams.cancel()
 }
 
 // Cache of fetched models for pricing lookups

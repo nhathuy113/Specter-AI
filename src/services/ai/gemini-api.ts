@@ -1,17 +1,15 @@
+import { createStreamScope } from './stream-lifecycle'
+import type { StreamCallbacks as CompletionCallbacks } from './contracts'
 // Google Gemini API client — OpenAI-compatible chat completions with streaming.
 import OpenAI from 'openai'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { GEMINI_BASE_URL } from '../../shared/constants'
 
-let currentAbortController: AbortController | null = null
+const streams = createStreamScope()
 
 export type GeminiMessage = ChatCompletionMessageParam
 
-export interface GeminiStreamCallbacks {
-  onChunk: (content: string) => void
-  onDone: () => void
-  onError: (error: string) => void
-}
+export type GeminiStreamCallbacks = CompletionCallbacks
 
 export async function streamGeminiCompletion(
   messages: GeminiMessage[],
@@ -77,7 +75,7 @@ async function streamGeminiCompletionInternal(
     apiKey,
     baseURL: GEMINI_BASE_URL
   })
-  currentAbortController = new AbortController()
+  const controller = streams.begin()
 
   try {
     const stream = await client.chat.completions.create(
@@ -87,7 +85,7 @@ async function streamGeminiCompletionInternal(
         max_tokens: maxTokens,
         stream: true
       },
-      { signal: currentAbortController.signal }
+      { signal: controller.signal }
     )
 
     for await (const chunk of stream) {
@@ -111,15 +109,12 @@ async function streamGeminiCompletionInternal(
     }
     callbacks.onError(message)
   } finally {
-    currentAbortController = null
+    streams.finish(controller)
   }
 }
 
 export function cancelGeminiStream(): void {
-  if (currentAbortController) {
-    currentAbortController.abort()
-    currentAbortController = null
-  }
+  streams.cancel()
 }
 
 /** Non-streaming multimodal completion — up to ~12 images for game hourly reports. */

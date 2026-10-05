@@ -1,3 +1,5 @@
+import { parseHourlyAiResponse } from '../context/thread-response'
+export { parseHourlyAiResponse } from '../context/thread-response'
 import fs from 'fs'
 import path from 'path'
 import { completeGeminiVisionMulti } from '../ai/gemini-api'
@@ -6,17 +8,7 @@ import { DEFAULT_SETTINGS } from '../../shared/constants'
 import type { GameBlockManifest, GameCaptureStore, GameHourlyReport } from './game-capture-store'
 import { pickBestKeyframePath } from './game-image-compress'
 
-const THREAD_MARKER = '---THREAD---'
 
-export function parseHourlyAiResponse(raw: string): { summary: string; sessionThread: string } {
-  const idx = raw.indexOf(THREAD_MARKER)
-  if (idx < 0) {
-    return { summary: raw.trim(), sessionThread: raw.trim().slice(-500) }
-  }
-  const summary = raw.slice(0, idx).trim()
-  const sessionThread = raw.slice(idx + THREAD_MARKER.length).trim()
-  return { summary, sessionThread }
-}
 
 function gameSpecificHint(gameId: string, gameLabel: string): string {
   if (gameId === 'hoi4' || /hearts of iron/i.test(gameLabel)) {

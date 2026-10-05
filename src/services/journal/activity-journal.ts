@@ -32,7 +32,7 @@ export interface JournalSnapshotInput {
   timestamp?: number
   durationSec?: number
   ocrChars?: number
-  textSource?: 'accessibility' | 'ocr' | 'hybrid' | 'none'
+  textSource?: ActivityJournalEntry['textSource']
   capturePlan?: 'window-crop' | 'display-full'
 }
 

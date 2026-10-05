@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { isValidSetting } from './store'
+import { isValidSetting } from './settings-validation'
 
 describe('store validation', () => {
+  it('rejects inherited object properties as settings keys', () => {
+    expect(isValidSetting('toString', 'x')).toBe(false)
+    expect(isValidSetting('constructor', 'x')).toBe(false)
+    expect(isValidSetting('__proto__', {})).toBe(false)
+  })
   it('accepts playbooks with mode scoping', () => {
     const valid = isValidSetting('playbooks', [
       {

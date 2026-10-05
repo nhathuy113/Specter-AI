@@ -1,13 +1,11 @@
+import { createStreamScope } from './stream-lifecycle'
+import type { StreamCallbacks as CompletionCallbacks } from './contracts'
 // OpenAI API client — uses OpenAI Platform API credits.
 import { OPENAI_API_BASE_URL } from '../../shared/constants'
 
-let currentAbortController: AbortController | null = null
+const streams = createStreamScope()
 
-export interface OpenAIStreamCallbacks {
-  onChunk: (content: string) => void
-  onDone: () => void
-  onError: (error: string) => void
-}
+export type OpenAIStreamCallbacks = CompletionCallbacks
 
 function buildInput(messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>): string {
   const system = messages.find((m) => m.role === 'system')?.content || ''
@@ -83,7 +81,7 @@ export async function streamOpenAICompletion(
   callbacks: OpenAIStreamCallbacks,
   maxOutputTokens = 1500
 ): Promise<void> {
-  currentAbortController = new AbortController()
+  const controller = streams.begin()
   let finished = false
 
   try {
@@ -99,7 +97,7 @@ export async function streamOpenAICompletion(
         max_output_tokens: maxOutputTokens,
         stream: true
       }),
-      signal: currentAbortController.signal
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -153,13 +151,10 @@ export async function streamOpenAICompletion(
     const message = err instanceof Error ? err.message : 'Unknown OpenAI API error'
     callbacks.onError(message)
   } finally {
-    currentAbortController = null
+    streams.finish(controller)
   }
 }
 
 export function cancelOpenAIStream(): void {
-  if (currentAbortController) {
-    currentAbortController.abort()
-    currentAbortController = null
-  }
+  streams.cancel()
 }
