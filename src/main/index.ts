@@ -8,6 +8,7 @@ import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
 import { startDeepseekCloak, stopDeepseekCloak } from '../services/ai/deepseek-cloak'
 import { bootstrapSettingsFromEnv, loadEnvFiles } from '../services/settings/env-bootstrap'
+import { isLiveDevRenderer, macDockPolicy } from '../services/ui/mac-dock-policy'
 
 loadEnvFiles()
 
@@ -23,8 +24,8 @@ process.on('uncaughtException', (err) => {
   throw err
 })
 
-if (process.platform === 'darwin' && !process.env['ELECTRON_RENDERER_URL']) {
-  app.setActivationPolicy('accessory')
+if (process.platform === 'darwin' && !isLiveDevRenderer(process.env['ELECTRON_RENDERER_URL'])) {
+  app.setActivationPolicy(macDockPolicy(false).activation)
 }
 
 // Prevent multiple instances

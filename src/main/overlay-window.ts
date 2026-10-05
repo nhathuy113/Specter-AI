@@ -17,6 +17,7 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
 import { syncWatchFrame } from './watch-frame-window'
 import { restoreMacOSForegroundApp } from './macos-front-window'
+import { isLiveDevRenderer, macDockPolicy } from '../services/ui/mac-dock-policy'
 import { defaultExpandedOverlayBounds, defaultPillOverlayBounds, getOverlayTargetDisplay, isPillSizedBounds } from '../services/ui/overlay-placement'
 import { resolveOverlayFitBounds, type OverlayFitRequest } from '../services/ui/overlay-fit'
 
@@ -307,13 +308,10 @@ function applyOverlayBackgroundLayout(win: BrowserWindow, watchEnabled: boolean)
 /** Prod is an accessory app so macOS keeps it out of the Dock. Live dev stays a normal Dock app. */
 export function syncMacAppActivationPolicy(): void {
   if (process.platform !== 'darwin') return
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    app.setActivationPolicy('regular')
-    void app.dock?.show()
-    return
-  }
-  app.setActivationPolicy('accessory')
-  app.dock?.hide()
+  const policy = macDockPolicy(isLiveDevRenderer(process.env['ELECTRON_RENDERER_URL']))
+  app.setActivationPolicy(policy.activation)
+  if (policy.showDock) void app.dock?.show()
+  else app.dock?.hide()
 }
 
 /** True when the expanded overlay panel is visible (not pill, not fully hidden). */

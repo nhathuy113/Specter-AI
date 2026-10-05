@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { describe, expect, it } from 'vitest'
+import { macDockPolicy } from './mac-dock-policy'
 import { DEFAULT_SETTINGS, OVERLAY_DEFAULTS, DEFAULT_WORK_COACH_SYSTEM_PROMPT, WORK_COACH_REPLY_FORMAT_VI } from '../../shared/constants'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 
@@ -36,17 +37,14 @@ describe('ux behavior gate', () => {
   })
 
   it('hides the Dock in prod and keeps a normal Dock app in live dev', () => {
+    expect(macDockPolicy(false)).toEqual({ activation: 'accessory', showDock: false })
+    expect(macDockPolicy(true)).toEqual({ activation: 'regular', showDock: true })
     const overlay = readFileSync(resolve(__dirname, '../../main/overlay-window.ts'), 'utf-8')
     const index = readFileSync(resolve(__dirname, '../../main/index.ts'), 'utf-8')
-    expect(overlay).toContain("process.env['ELECTRON_RENDERER_URL']")
-    expect(overlay).toContain("app.setActivationPolicy('regular')")
-    expect(overlay).toContain('app.dock?.show()')
-    expect(overlay).toContain("app.setActivationPolicy('accessory')")
-    expect(overlay).toContain('app.dock?.hide()')
-    expect(index).toContain("app.setActivationPolicy('accessory')")
+    expect(overlay).toContain('macDockPolicy(')
+    expect(index).toContain('macDockPolicy(')
     expect(index).toContain('syncMacAppActivationPolicy()')
     expect(index).toContain('createDashboardWindow()')
-    expect(index).toContain("if (process.platform !== 'darwin')")
   })
 
   it('pill logs work only; coach + debug when expanded panel open', () => {
