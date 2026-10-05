@@ -22,6 +22,7 @@ describe('MacCaptureExclusionV2', () => {
     expect(new MacCaptureExclusionV2(mac).protect(win)).toBe(true)
     expect(win.setContentProtection).toHaveBeenCalledWith(true)
     expect(mac.exclude).toHaveBeenCalledWith(7, 420, 80)
+    expect(win.setContentProtection).toHaveBeenCalledBefore(mac.exclude as ReturnType<typeof vi.fn>)
   })
 
   it('does not touch a destroyed window', () => {
@@ -49,8 +50,12 @@ describe('CaptureExclusionV2', () => {
     expect(new CaptureExclusionV2('darwin', new MacCaptureExclusionV2(mac), excludeWindows).protect(win)).toBe(true)
     expect(mac.exclude).toHaveBeenCalledOnce()
     expect(excludeWindows).not.toHaveBeenCalled()
-    expect(new CaptureExclusionV2('win32', new MacCaptureExclusionV2(shape()), excludeWindows).protect(win)).toBe(true)
-    expect(excludeWindows).toHaveBeenCalledWith(win)
-    expect(new CaptureExclusionV2('linux', new MacCaptureExclusionV2(shape()), excludeWindows).protect(window())).toBe(false)
+    const windows = window()
+    expect(new CaptureExclusionV2('win32', new MacCaptureExclusionV2(shape()), excludeWindows).protect(windows)).toBe(true)
+    expect(excludeWindows).toHaveBeenCalledWith(windows)
+    expect(windows.setContentProtection).not.toHaveBeenCalled()
+    const linux = window()
+    expect(new CaptureExclusionV2('linux', new MacCaptureExclusionV2(shape()), excludeWindows).protect(linux)).toBe(false)
+    expect(linux.setContentProtection).not.toHaveBeenCalled()
   })
 })
