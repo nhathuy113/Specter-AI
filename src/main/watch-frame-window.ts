@@ -4,6 +4,7 @@ import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture } from './capture-protection'
 import { getSetting, setSetting } from '../services/settings/store'
 import { clampWatchFrame, hitWatchFrame, isWatchFrame, type WatchFrame } from '../services/capture/watch-frame'
+import { watchFrameCaptureHold, type WatchFrameSurface } from '../services/capture/watch-frame-capture-hold'
 
 let frameWindow: BrowserWindow | null = null
 let showGeneration = 0
@@ -12,7 +13,6 @@ let dragging = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let hoverTimer: ReturnType<typeof setInterval> | undefined
 let registered = false
-let captureSuspensions = 0
 
 function saveFrame(): void {
   if (saveTimer) clearTimeout(saveTimer)
@@ -29,19 +29,21 @@ export function getLiveWatchFrame(): WatchFrame | undefined {
   return frameWindow && !frameWindow.isDestroyed() ? frameWindow.getBounds() : undefined
 }
 
+function watchFrameSurface(): WatchFrameSurface {
+  const win = frameWindow
+  return {
+    get dragging() { return dragging },
+    get visible() { return !!(win && !win.isDestroyed() && win.isVisible()) },
+    hide: () => { win?.hide() },
+    restore: () => {
+      if (ready && watchFrameWanted() && frameWindow && !frameWindow.isDestroyed() && !frameWindow.isVisible()) frameWindow.showInactive()
+    }
+  }
+}
+
 /** Hide the border from screenshots; restore only a current, ready frame. */
 export function suspendWatchFrameForCapture(): { hidden: boolean; restore: () => void } {
-  if (dragging) throw new Error('Watch frame is being adjusted. Release the pointer before capturing.')
-  captureSuspensions++
-  const hidden = !!(frameWindow && !frameWindow.isDestroyed() && frameWindow.isVisible())
-  if (hidden) frameWindow!.hide()
-  let restored = false
-  return { hidden, restore() {
-    if (restored) return
-    restored = true
-    captureSuspensions--
-    if (captureSuspensions === 0 && ready && watchFrameWanted() && frameWindow && !frameWindow.isDestroyed() && !frameWindow.isVisible()) frameWindow.showInactive()
-  } }
+  return watchFrameCaptureHold.begin(watchFrameSurface())
 }
 
 function watchFrameWanted(): boolean {
@@ -182,7 +184,7 @@ export function syncWatchFrame(): void {
       if (generation !== showGeneration) return
       if (frameWindow !== win || win.isDestroyed() || !watchFrameWanted()) return
       ready = true
-      if (captureSuspensions === 0) win.showInactive()
+      if (!watchFrameCaptureHold.suspended) win.showInactive()
       console.info('[Specter] Watch frame visible', frameWindow.getBounds())
     })
     loadFrame(win)
@@ -194,6 +196,6 @@ export function syncWatchFrame(): void {
     }, 80)
   } else if (!dragging) {
     frameWindow.setBounds(bounds)
-    if (ready && captureSuspensions === 0 && !frameWindow.isVisible()) frameWindow.showInactive()
+    if (ready && !watchFrameCaptureHold.suspended && !frameWindow.isVisible()) frameWindow.showInactive()
   }
 }

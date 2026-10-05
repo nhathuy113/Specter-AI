@@ -91,20 +91,19 @@ describe('watch frame lifecycle and IPC', () => {
   })
 })
 
-it('hides the frame during capture and never restores it after Auto is disabled', async () => {
+it('keeps the frame visible during capture and does not restore it after Auto is disabled', async () => {
   const { syncWatchFrame, suspendWatchFrameForCapture } = await import('./watch-frame-window')
   syncWatchFrame()
   const frame = native.windows[0]
   frame.emit('ready-to-show')
   const capture = suspendWatchFrameForCapture()
-  expect(capture.hidden).toBe(true)
+  expect(capture.hidden).toBe(false)
   capture.restore()
-  capture.restore()
-  expect(frame.showInactive).toHaveBeenCalledTimes(2)
+  expect(frame.showInactive).toHaveBeenCalledTimes(1)
   const next = suspendWatchFrameForCapture()
   native.settings.fullAutoMode = false
   syncWatchFrame()
   next.restore()
   expect(frame.isDestroyed()).toBe(true)
-  expect(frame.showInactive).toHaveBeenCalledTimes(2)
+  expect(frame.showInactive).toHaveBeenCalledTimes(1)
 })
