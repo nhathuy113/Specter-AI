@@ -1,8 +1,8 @@
-import type { AiProviderId, CompletionProvider, CompletionRequest, StreamCallbacks } from './contracts'
+import type { CompletionProvider, CompletionRequest, StreamCallbacks } from './contracts'
 
-export function createCompletionGateway(providers: Record<AiProviderId, CompletionProvider>) {
+export function createCompletionGateway<T extends string>(providers: Record<T, CompletionProvider>) {
   return {
-    async stream(provider: AiProviderId, request: CompletionRequest, callbacks: StreamCallbacks): Promise<void> {
+    async stream(provider: T, request: CompletionRequest, callbacks: StreamCallbacks): Promise<void> {
       // A provider must have exactly one terminal outcome, even if it throws after
       // an error callback or emits more data after completion.
       let finished = false

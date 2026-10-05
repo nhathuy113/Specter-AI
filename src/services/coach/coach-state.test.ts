@@ -11,6 +11,17 @@ describe('CoachTriggerEvaluator', () => {
     evaluator = new CoachTriggerEvaluator()
   })
 
+  it('detects visual changes without OCR while retaining duplicate and cooldown gates', () => {
+    const input = { ocrText: '[SCREENSHOT]', imageFingerprint: 'frame-a', nowMs: 1000, cooldownSec: 10, isStreaming: false }
+    const first = evaluator.evaluate(input)
+    expect(first.action).toBe('trigger')
+    evaluator.recordCoachTriggered(input.nowMs, first.fingerprint)
+    expect(evaluator.evaluate({ ...input, nowMs: 12000 })).toMatchObject({ action: 'skip', reason: 'duplicate-fingerprint' })
+    expect(evaluator.evaluate({ ...input, imageFingerprint: 'frame-b', nowMs: 2000 })).toMatchObject({ action: 'skip', reason: 'cooldown' })
+    expect(evaluator.evaluate({ ...input, imageFingerprint: 'frame-b', nowMs: 12000 })).toMatchObject({ action: 'trigger', screenChanged: true })
+    expect(evaluator.evaluate({ ...input, imageFingerprint: 'frame-b', nowMs: 12000, isStreaming: true })).toMatchObject({ action: 'skip', reason: 'streaming' })
+  })
+
   it('triggers on first non-empty screen', () => {
     const result = evaluator.evaluate({
       ocrText: SCREEN_A,

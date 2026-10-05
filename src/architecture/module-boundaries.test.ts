@@ -67,7 +67,8 @@ describe('architecture regression gates', () => {
   it('domain cores remain independent of native clients and persistent adapters, transitively', () => {
     const cores = [
       'src/services/ai/completion-gateway.ts', 'src/services/ai/completion-pricing.ts',
-      'src/services/ai/ai-configuration.ts',
+      'src/services/ai/ai-configuration.ts', 'src/services/ai/deepseek-session.ts',
+      'src/services/ai/json-process.ts', 'src/services/capture/capture-context.ts',
       'src/services/context/assistant-messages.ts',
       'src/services/work/work-coach-orchestrator.ts', 'src/services/work/work-coach-quiz-scheduler.ts',
       'src/services/work/work-coach-session-core.ts', 'src/services/work/work-coach-prompt.ts',

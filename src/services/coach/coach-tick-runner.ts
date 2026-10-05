@@ -30,6 +30,7 @@ export function createCoachTickRunner(evaluator: CoachTriggerEvaluator) {
 
     const result = evaluator.evaluate({
       ocrText: ocrForFingerprint,
+      imageFingerprint: capture.useVision ? capture.imageFingerprint : undefined,
       nowMs: deps.nowMs,
       cooldownSec: deps.cooldownSec,
       isStreaming: deps.isStreaming,

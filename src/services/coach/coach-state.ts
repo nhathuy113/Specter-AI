@@ -22,6 +22,7 @@ export type CoachEvaluateResult =
     }
 
 export interface CoachEvaluateInput {
+  imageFingerprint?: string
   ocrText: string
   nowMs: number
   cooldownSec: number
@@ -45,7 +46,7 @@ export class CoachTriggerEvaluator {
       ...meta
     })
 
-    if (ctx.kind === 'empty' || !ctx.actionable) {
+    if (!input.imageFingerprint && (ctx.kind === 'empty' || !ctx.actionable)) {
       return { action: 'skip', reason: 'non-actionable-screen', fingerprint: '' }
     }
 
@@ -54,9 +55,9 @@ export class CoachTriggerEvaluator {
     const visualProgress = !!(profile && !profile.snippetTracking)
 
     const fingerprint =
-      mode === 'work'
+      input.imageFingerprint || (mode === 'work'
         ? fingerprintWorkCoachProgress(input.ocrText, meta)
-        : fingerprintCoachScreenText(input.ocrText)
+        : fingerprintCoachScreenText(input.ocrText))
 
     if (!fingerprint) {
       return { action: 'skip', reason: 'empty-text', fingerprint }
@@ -74,7 +75,7 @@ export class CoachTriggerEvaluator {
     }
 
     if (fingerprint === this.lastFingerprint && this.lastFingerprint !== '') {
-      if (mode === 'work' && visualProgress) {
+      if (input.imageFingerprint || (mode === 'work' && visualProgress)) {
         return { action: 'skip', reason: 'duplicate-fingerprint', fingerprint }
       }
       if (mode !== 'work') {

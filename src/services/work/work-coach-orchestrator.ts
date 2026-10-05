@@ -1,6 +1,6 @@
 import type { ScreenMetadata } from '../../shared/types'
 import {
-  WORK_COACH_GEMINI_36, WORK_COACH_GEMINI_LITE, WORK_COACH_GEMINI_LABELS,
+  WORK_COACH_GEMINI_36, WORK_COACH_GEMINI_LITE,
   WORK_COACH_QUIZ_DEEP_WAITING_VI, WORK_COACH_QUIZ_LITE_PENDING_VI,
   resolveWorkCoachPanelLabels
 } from '../../shared/constants'
@@ -23,6 +23,8 @@ export interface WorkCoachRequest {
 export interface WorkCoachEscalationRequest extends WorkCoachRequest {
   useVision: boolean
   includeCursor: boolean
+  /** Parallel DeepSeek Cloak panel (screenshot) for A/B vs Gemini. */
+  includeDeepseekCompare?: boolean
   screenScreenshot?: string
   screenText?: string
   screenMetadata?: ScreenMetadata
@@ -30,18 +32,20 @@ export interface WorkCoachEscalationRequest extends WorkCoachRequest {
 
 export interface WorkCoachQuizRequest extends WorkCoachRequest {
   screenScreenshot: string
+  includeDeepseekCompare?: boolean
   sessionKey: string
 }
 
 export interface WorkCoachPorts {
   streamGemini: CompletionStream
+  streamDeepseek: CompletionStream
   completeCursor(messages: TextMessage[]): Promise<string>
   saveCursorReply(screenText: string, metadata: ScreenMetadata | undefined, reply: string): void
   quiz: { begin(sessionKey: string): number; isCurrent(generation: number): boolean; schedule(request: QuizDeepRequest): void }
 }
 
 export function createWorkCoachOrchestrator(ports: WorkCoachPorts) {
-  async function streamPanel(request: WorkCoachRequest, index: number, model: string, maxTokens: number, screenshot?: string) {
+  async function streamPanel(request: WorkCoachRequest, index: number, model: string, maxTokens: number, screenshot?: string, stream: CompletionStream = ports.streamGemini, apiKey = request.geminiApiKey) {
     let content = ''
     let finished = false
     let failed = false
@@ -57,7 +61,7 @@ export function createWorkCoachOrchestrator(ports: WorkCoachPorts) {
       if (!request.sink.isDisposed()) request.sink.update(index, `⚠ ${message}`, true)
     }
     try {
-      await ports.streamGemini({ messages: request.messages, model, apiKey: request.geminiApiKey, screenshot, maxTokens }, {
+      await stream({ messages: request.messages, model, apiKey, screenshot, maxTokens }, {
         onChunk: (chunk) => {
           if (finished) return
           content += chunk
@@ -66,13 +70,22 @@ export function createWorkCoachOrchestrator(ports: WorkCoachPorts) {
       })
       complete()
     } catch (cause) {
-      error(cause instanceof Error ? cause.message : 'Gemini failed')
+      error(cause instanceof Error ? cause.message : 'Completion failed')
     }
     return failed ? '' : content
   }
 
+  function streamDeepseekPanel(request: WorkCoachRequest, index: number, screenshot: string, maxTokens: number) {
+    return streamPanel(request, index, 'deepseek-cloak/web', maxTokens, screenshot, ports.streamDeepseek, '')
+  }
+
   async function runEscalation(request: WorkCoachEscalationRequest): Promise<WorkCoachRunResult> {
-    const labels = resolveWorkCoachPanelLabels(request.includeCursor)
+    const screenshot = request.useVision ? request.screenScreenshot : undefined
+    const includeDeepseek = !!(
+      request.includeDeepseekCompare &&
+      screenshot?.trim()
+    )
+    const labels = resolveWorkCoachPanelLabels(request.includeCursor, includeDeepseek)
     const panels = labels.map(() => '')
     const sink: CoachPanelSink = {
       isDisposed: () => request.sink.isDisposed(),
@@ -84,27 +97,36 @@ export function createWorkCoachOrchestrator(ports: WorkCoachPorts) {
       }
     }
     if (!sink.isDisposed()) sink.start(labels)
-    const screenshot = request.useVision ? request.screenScreenshot : undefined
     const input = { ...request, sink }
-    const tasks = [
+    const tasks: Promise<string>[] = [
       streamPanel(input, 0, WORK_COACH_GEMINI_LITE, 2000, screenshot),
       streamPanel(input, 1, WORK_COACH_GEMINI_36, 2000, screenshot)
     ]
+    let nextIndex = 2
+    if (includeDeepseek && screenshot) {
+      const deepIndex = nextIndex++
+      tasks.push(streamDeepseekPanel(input, deepIndex, screenshot, 2000))
+    }
     if (request.includeCursor) {
+      const cursorIndex = nextIndex
       tasks.push((async () => {
         try {
           const text = await ports.completeCursor(request.messages)
-          if (!sink.isDisposed() && text.trim() && request.screenText) ports.saveCursorReply(request.screenText, request.screenMetadata, text)
-          sink.update(2, text.trim() || '_(Cursor trả lời rỗng)_', true)
+          if (!sink.isDisposed() && text.trim() && request.screenText) {
+            ports.saveCursorReply(request.screenText, request.screenMetadata, text)
+          }
+          sink.update(cursorIndex, text.trim() || '_(Cursor trả lời rỗng)_', true)
           return text
         } catch (cause) {
-          sink.update(2, `⚠ ${cause instanceof Error ? cause.message : 'Cursor SDK failed'}`, true)
+          sink.update(cursorIndex, `⚠ ${cause instanceof Error ? cause.message : 'Cursor SDK failed'}`, true)
           return ''
         }
       })())
     }
     const results = await Promise.all(tasks)
-    const modelLabel = request.includeCursor ? 'work-coach/triple' : 'work-coach/dual'
+    const modelLabel = includeDeepseek
+      ? (request.includeCursor ? 'work-coach/compare+cursor' : 'work-coach/compare')
+      : (request.includeCursor ? 'work-coach/triple' : 'work-coach/dual')
     if (!sink.isDisposed()) sink.done(modelLabel)
     return {
       completionContent: labels.map((label, i) => `## ${label}\n\n${panels[i] || '_(no response)_'}`).join('\n\n---\n\n'),
@@ -113,6 +135,7 @@ export function createWorkCoachOrchestrator(ports: WorkCoachPorts) {
   }
 
   async function runQuizVision(request: WorkCoachQuizRequest): Promise<WorkCoachRunResult> {
+    const includeDeepseek = !!(request.includeDeepseekCompare && request.screenScreenshot.trim())
     const generation = ports.quiz.begin(request.sessionKey)
     const sink: CoachPanelSink = {
       isDisposed: () => request.sink.isDisposed() || !ports.quiz.isCurrent(generation),
@@ -121,8 +144,12 @@ export function createWorkCoachOrchestrator(ports: WorkCoachPorts) {
       done: (model) => request.sink.done(model)
     }
     if (!sink.isDisposed()) {
-      sink.start([...WORK_COACH_GEMINI_LABELS])
+      sink.start(resolveWorkCoachPanelLabels(false, includeDeepseek))
       sink.update(1, WORK_COACH_QUIZ_LITE_PENDING_VI, true)
+    }
+    if (includeDeepseek) {
+      // Comparison never delays Lite or its deferred Gemini explanation.
+      void streamDeepseekPanel({ ...request, sink }, 2, request.screenScreenshot, 2000)
     }
     const content = await streamPanel({ ...request, sink }, 0, WORK_COACH_GEMINI_LITE, 1000, request.screenScreenshot)
     if (!sink.isDisposed()) sink.done(WORK_COACH_GEMINI_LITE)

@@ -94,6 +94,8 @@ export interface AudioStatus {
 }
 
 export interface ScreenCaptureResult {
+  /** Visual change detection without waiting for OCR. */
+  imageFingerprint?: string
   text: string
   /** Local OCR for dedup/fingerprint only — never sent to the model when coachVision is set. */
   fingerprintText?: string

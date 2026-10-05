@@ -114,3 +114,21 @@ Behavior tests cover parallel cancellation, one terminal stream outcome, panel
 failure isolation, disposed targets, stale quiz results, session isolation,
 context isolation and auto-capture overlap/stop behavior. Live provider and native
 capture probes remain separate from these deterministic checks.
+
+## Vision and browser completion lifecycle
+
+Coach vision uses a quantized image fingerprint for change detection and sends the
+screenshot with app/window metadata. OCR remains on the text capture path and is
+not required to publish a vision capture. Streaming, cooldown and duplicate gates
+apply to image fingerprints too. Enabling Auto preserves the pinned display setting.
+
+DeepSeek's browser adapter requires `uv` and a logged-in Cloak profile. The session
+serializes requests against that persistent profile and cancels both queued and
+active requests. The JSON subprocess adapter bounds output and execution time,
+handles malformed output and stdin errors, and settles once. The packaged app
+includes the Python script as a resource. Reply parsing retains the complete newest
+markdown block and excludes replies from earlier turns.
+
+Quiz comparison starts DeepSeek beside Gemini Lite without waiting for its result.
+Gemini's detailed explanation keeps its existing delay. Quiz generation ownership
+suppresses comparison updates after the user moves to another question.

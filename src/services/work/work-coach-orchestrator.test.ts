@@ -7,7 +7,10 @@ import type { CoachPanelSink } from './coach-panel-port'
 function setup(streamGemini: CompletionStream) {
   const sink = { isDisposed: () => false, start: vi.fn(), update: vi.fn(), done: vi.fn() }
   const ports: WorkCoachPorts = {
-    streamGemini, completeCursor: vi.fn(async () => 'Cursor advice'), saveCursorReply: vi.fn(),
+    streamGemini,
+    streamDeepseek: vi.fn(async (_r, c) => { c.onChunk('deepseek'); c.onDone() }),
+    completeCursor: vi.fn(async () => 'Cursor advice'),
+    saveCursorReply: vi.fn(),
     quiz: { begin: () => 1, isCurrent: () => true, schedule: vi.fn() }
   }
   return { sink, ports, coach: createWorkCoachOrchestrator(ports) }
@@ -61,6 +64,39 @@ describe('work coach ports', () => {
     expect(sink.start).toHaveBeenCalledTimes(1)
     expect(sink.update).not.toHaveBeenCalled()
     expect(sink.done).not.toHaveBeenCalled()
+  })
+
+  it('runs quiz comparison beside Lite without waiting for DeepSeek', async () => {
+    const { ports, sink } = setup(async (_request, callbacks) => { callbacks.onChunk('Lite answer'); callbacks.onDone() })
+    let callbacks!: StreamCallbacks
+    let finish!: () => void
+    ports.streamDeepseek = vi.fn((_request, cb) => {
+      callbacks = cb
+      return new Promise<void>(resolve => { finish = resolve })
+    })
+    const coach = createWorkCoachOrchestrator(ports)
+    const result = await coach.runQuizVision({ messages: [], geminiApiKey: 'key', screenScreenshot: 'b64', sessionKey: 'quiz', includeDeepseekCompare: true, sink })
+    expect(result.primaryPanelContent).toBe('Lite answer')
+    expect(sink.start.mock.calls[0][0]).toHaveLength(3)
+    expect(ports.streamDeepseek).toHaveBeenCalledOnce()
+    expect(ports.quiz.schedule).toHaveBeenCalledOnce()
+    callbacks.onChunk('comparison'); callbacks.onDone(); finish()
+    expect(sink.update).toHaveBeenCalledWith(2, 'comparison', true)
+  })
+
+  it('suppresses late quiz comparison after the question changes', async () => {
+    const { ports, sink } = setup(async (_request, callbacks) => { callbacks.onChunk('Lite'); callbacks.onDone() })
+    let callbacks!: StreamCallbacks
+    let finish!: () => void
+    let generation = 0
+    ports.quiz = { begin: () => ++generation, isCurrent: value => value === generation, schedule: vi.fn() }
+    ports.streamDeepseek = (_request, cb) => { callbacks = cb; return new Promise<void>(resolve => { finish = resolve }) }
+    const coach = createWorkCoachOrchestrator(ports)
+    await coach.runQuizVision({ messages: [], geminiApiKey: 'key', screenScreenshot: 'b64', sessionKey: 'q1', includeDeepseekCompare: true, sink })
+    generation++
+    sink.update.mockClear()
+    callbacks.onChunk('old answer'); callbacks.onDone(); finish()
+    expect(sink.update).not.toHaveBeenCalled()
   })
 
   it('switching quiz while Lite is running discards its late UI and deep schedule', async () => {

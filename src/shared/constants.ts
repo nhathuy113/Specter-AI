@@ -27,22 +27,27 @@ export const WORK_COACH_GEMINI_PLACEHOLDERS = [
 ] as const
 export const WORK_COACH_CURSOR_PLACEHOLDER =
   'Cursor SDK — agent auto, cần CURSOR_API_KEY trong .env.' as const
+export const WORK_COACH_DEEPSEEK_LABEL = 'DeepSeek (Cloak)' as const
+export const WORK_COACH_DEEPSEEK_PLACEHOLDER =
+  'DeepSeek web — so sánh với Gemini; gửi kèm screenshot màn hình.' as const
 
-/** @deprecated Use resolveWorkCoachPanelLabels(includeCursor) */
+/** @deprecated Use resolveWorkCoachPanelLabels(includeCursor, includeDeepseek) */
 export const WORK_COACH_TRIPLE_LABELS = WORK_COACH_GEMINI_LABELS
-/** @deprecated Use resolveWorkCoachPanelPlaceholders(includeCursor) */
+/** @deprecated Use resolveWorkCoachPanelPlaceholders(includeCursor, includeDeepseek) */
 export const WORK_COACH_TRIPLE_PLACEHOLDERS = WORK_COACH_GEMINI_PLACEHOLDERS
 
-export function resolveWorkCoachPanelLabels(includeCursor: boolean): string[] {
-  return includeCursor
-    ? [...WORK_COACH_GEMINI_LABELS, WORK_COACH_CURSOR_LABEL]
-    : [...WORK_COACH_GEMINI_LABELS]
+export function resolveWorkCoachPanelLabels(includeCursor: boolean, includeDeepseek = false): string[] {
+  const labels: string[] = [...WORK_COACH_GEMINI_LABELS]
+  if (includeDeepseek) labels.push(WORK_COACH_DEEPSEEK_LABEL)
+  if (includeCursor) labels.push(WORK_COACH_CURSOR_LABEL)
+  return labels
 }
 
-export function resolveWorkCoachPanelPlaceholders(includeCursor: boolean): string[] {
-  return includeCursor
-    ? [...WORK_COACH_GEMINI_PLACEHOLDERS, WORK_COACH_CURSOR_PLACEHOLDER]
-    : [...WORK_COACH_GEMINI_PLACEHOLDERS]
+export function resolveWorkCoachPanelPlaceholders(includeCursor: boolean, includeDeepseek = false): string[] {
+  const placeholders: string[] = [...WORK_COACH_GEMINI_PLACEHOLDERS]
+  if (includeDeepseek) placeholders.push(WORK_COACH_DEEPSEEK_PLACEHOLDER)
+  if (includeCursor) placeholders.push(WORK_COACH_CURSOR_PLACEHOLDER)
+  return placeholders
 }
 
 export const DEFAULT_SYSTEM_PROMPT = `You are a real-time AI copilot for meetings, interviews, and work sessions.

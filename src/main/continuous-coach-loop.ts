@@ -2,11 +2,12 @@ import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import type { AssistantMode } from '../shared/types'
-import type { PerceptionMode } from '../shared/constants'
 import type { ScreenCaptureResult } from '../shared/types'
 import { checkAiConfig } from '../services/ai/ai-config'
+import { cloakDeepseekProfileReady } from '../services/ai/completion-route'
 import { CoachTriggerEvaluator } from '../services/coach/coach-state'
 import { createCoachTickRunner } from '../services/coach/coach-tick-runner'
+import { resolveBackgroundCaptureParams } from '../services/capture/background-capture-params'
 import { getSetting } from '../services/settings/store'
 import { captureScreenText } from './screen-capture'
 import { appendJournalFromCapture, resolveJournalFocusFingerprint } from '../services/journal/activity-journal-capture'
@@ -48,19 +49,10 @@ export async function runCoachTickForTest(deps: Partial<{
   const assistantMode = deps.assistantMode ?? (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
   const recordTrigger = deps.recordTrigger
   const captureScreen = deps.captureScreen ?? (async () => {
-    const fullAuto = getSetting<boolean>('fullAutoMode')
-    const assistantMode = (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
-    const smartCrop =
-      assistantMode === 'work'
-        ? true
-        : (getSetting<boolean>('smartCrop') ?? DEFAULT_SETTINGS.smartCrop)
-    const perceptionMode = fullAuto
-      ? 'ocr'
-      : ((getSetting<string>('perceptionMode') as PerceptionMode) ?? DEFAULT_SETTINGS.perceptionMode)
-    const coachVision = assistantMode === 'work'
-    return captureScreenText(smartCrop, perceptionMode, {
-      skipAccessibility: fullAuto,
-      coachVision
+    const p = resolveBackgroundCaptureParams((key) => getSetting(key))
+    return captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+      skipAccessibility: p.skipAccessibility,
+      coachVision: p.coachVision
     })
   })
 
@@ -74,7 +66,7 @@ async function coachTimerTick(): Promise<void> {
   }
 
   const aiConfig = checkAiConfig()
-  if (!aiConfig.configured) {
+  if (!aiConfig.configured && !cloakDeepseekProfileReady()) {
     return
   }
 
@@ -115,7 +107,7 @@ async function coachTimerTick(): Promise<void> {
       timestamp: Date.now(),
       appName: result.capture?.appName,
       windowTitle: result.capture?.windowTitle,
-      useVision: !!result.capture?.screenshot,
+      useVision: !!result.capture?.useVision,
       screenshot: result.capture?.screenshot,
       screenChanged: result.screenChanged
     })

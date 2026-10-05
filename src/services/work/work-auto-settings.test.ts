@@ -13,18 +13,24 @@ describe('work auto settings gate', () => {
     expect(isWorkAutoModeEnabled(false, true)).toBe(false)
   })
 
-  it('enables work coach stack with smart crop (not pinned full display)', () => {
+  it('enables auto watch with smart crop and does not set assistant mode', () => {
     const patch = buildWorkAutoEnablePatch({})
     expect(patch).toMatchObject({
       fullAutoMode: true,
       continuousCoach: true,
-      assistantMode: 'work',
       activityJournal: true,
       smartCrop: true,
-      workAreaCaptureEnabled: false,
       detectIntervalSec: DEFAULT_SETTINGS.detectIntervalSec,
       coachCooldownSec: DEFAULT_SETTINGS.workCoachCooldownSec
     })
+    expect(patch.workAreaDisplayId).toBeUndefined()
+    expect(patch).not.toHaveProperty('assistantMode')
+    expect(patch).not.toHaveProperty('workAreaCaptureEnabled')
+  })
+
+  it('preserves enabled display pinning when Auto is enabled', () => {
+    const patch = buildWorkAutoEnablePatch({ workAreaCaptureEnabled: true, workAreaDisplayId: 42 })
+    expect(patch).not.toHaveProperty('workAreaCaptureEnabled')
     expect(patch.workAreaDisplayId).toBeUndefined()
   })
 

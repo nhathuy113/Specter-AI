@@ -6,6 +6,7 @@ import { appendJournalFromCapture } from '../services/journal/activity-journal-c
 import { appendJournalSnapshot } from '../services/journal/activity-journal'
 import { extractScreenContext } from '../services/context/context-router'
 import { fingerprintJournalFocus } from '../services/capture/fingerprint'
+import { resolveBackgroundCaptureParams } from '../services/capture/background-capture-params'
 import { getSetting } from '../services/settings/store'
 import { captureScreenText } from './screen-capture'
 import { syncOverlayBackgroundMode, shouldRunWorkJournal } from './overlay-window'
@@ -21,7 +22,11 @@ export async function recordActivityJournalTick(): Promise<void> {
 
   if (useSmartCrop) {
     try {
-      const capture = await captureScreenText(true, 'ocr', { skipAccessibility: true })
+      const p = resolveBackgroundCaptureParams((key) => getSetting(key))
+      const capture = await captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+        skipAccessibility: p.skipAccessibility,
+        coachVision: p.coachVision
+      })
       appendJournalFromCapture(capture, { durationSec: 60, capturePlan: 'window-crop' })
       return
     } catch (err) {

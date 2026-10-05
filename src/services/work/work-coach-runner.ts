@@ -1,4 +1,5 @@
 import { streamGemini } from '../ai/gemini-completion'
+import { streamDeepseekCloak } from '../ai/deepseek-cloak'
 import { createCoachPanelSink, type MessageTarget } from '../ui/coach-panel-ipc'
 import { completeCursorWorkCoach } from './work-coach-cursor'
 import { saveWorkCoachCursorReply } from './work-coach-session'
@@ -12,6 +13,7 @@ export type { WorkCoachRunResult } from './work-coach-orchestrator'
 
 const coach = createWorkCoachOrchestrator({
   streamGemini,
+  streamDeepseek: streamDeepseekCloak,
   completeCursor: completeCursorWorkCoach,
   saveCursorReply: saveWorkCoachCursorReply,
   quiz: { begin: beginQuizLiteSession, isCurrent: isQuizSessionCurrent, schedule: scheduleQuizDeepExplain }

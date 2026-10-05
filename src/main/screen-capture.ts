@@ -9,7 +9,8 @@ import screenshot from 'screenshot-desktop'
 import { screen } from 'electron'
 import type { ScreenCaptureResult, PerceptionMode } from '../shared/types'
 import { captureAccessibilityText } from '../services/capture/accessibility-capture'
-import { resolvePerceptionPlan } from '../services/capture/perception'
+import { resolveCaptureContext } from '../services/capture/capture-context'
+import { fingerprintImage } from '../services/capture/image-fingerprint'
 import { getSetting } from '../services/settings/store'
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import {
@@ -328,15 +329,6 @@ async function captureFromPlan(plan: SmartCropPlan): Promise<Buffer> {
  *
  * @param activeWindowOnly - If true, attempt to crop to the active window's bounds
  */
-function buildCoachMetadataText(appName?: string, windowTitle?: string): string {
-  return [
-    appName ? `[ACTIVE APP] ${appName}` : '',
-    windowTitle ? `[WINDOW] ${windowTitle}` : ''
-  ]
-    .filter(Boolean)
-    .join('\n')
-}
-
 export async function captureScreenText(
   activeWindowOnly = false,
   perceptionMode?: PerceptionMode,
@@ -395,14 +387,11 @@ export async function captureScreenText(
     const displayCount = displays.length
     const workEnabled = getSetting<boolean>('workAreaCaptureEnabled')
     const workDisplayId = getSetting<number>('workAreaDisplayId')
-    const assistantMode = getSetting<string>('assistantMode') ?? DEFAULT_SETTINGS.assistantMode
-    const skipPinnedForWorkCrop = activeWindowOnly && assistantMode === 'work'
     const pinnedPlan =
-      !skipPinnedForWorkCrop &&
       workAreaCaptureActive(workEnabled, workDisplayId) &&
       planPinnedWorkDisplay(displays, workDisplayId)
 
-    if (pinnedPlan && !activeWindowOnly) {
+    if (pinnedPlan) {
       imgBuffer = await captureFromPlan(pinnedPlan)
       console.info(`[Specter] Work area capture: ${pinnedPlan.display.label} (full display)`)
     } else if (activeWindowOnly) {
@@ -420,9 +409,6 @@ export async function captureScreenText(
         imgBuffer = await captureDisplayScreenshot()
         console.info('[Specter] Smart crop unavailable — full primary display')
       }
-    } else if (pinnedPlan) {
-      imgBuffer = await captureFromPlan(pinnedPlan)
-      console.info(`[Specter] Work area capture: ${pinnedPlan.display.label} (full display)`)
     } else {
       imgBuffer = await captureDisplayScreenshot()
     }
@@ -448,32 +434,14 @@ export async function captureScreenText(
       ? 'pinned-work-display'
       : (frontWindowMeta?.windowTitle ?? axResult?.windowTitle)
 
-    let ocrText = ''
-    let fingerprintText: string | undefined
-    let textSource: ScreenCaptureResult['textSource'] = 'none'
-    let modelText = ''
-    let useVision = false
-
-    if (opts.coachVision) {
-      fingerprintText = await ocrInWorker(imgBuffer)
-      modelText = buildCoachMetadataText(appName, windowTitle)
-      textSource = 'metadata'
-      useVision = true
-    } else {
-      ocrText = await ocrInWorker(imgBuffer)
-      const perception = resolvePerceptionPlan(mode, ocrText, axResult)
-      modelText = perception.text
-      textSource = perception.textSource
-      useVision = perception.useVision
-    }
+    const context = await resolveCaptureContext(imgBuffer, {
+      coachVision: !!opts.coachVision, mode, appName, windowTitle, accessibility: axResult
+    }, { ocr: ocrInWorker, fingerprint: fingerprintImage })
 
     return {
-      text: modelText,
-      fingerprintText,
+      ...context,
       screenshot: base64,
       timestamp: Date.now(),
-      textSource,
-      useVision,
       appName,
       windowTitle,
       displayCount

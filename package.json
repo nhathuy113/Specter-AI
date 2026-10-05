@@ -1,7 +1,7 @@
 {
   "name": "specter-ai",
   "version": "1.2.1",
-  "description": "Open-source AI screen & meeting copilot — invisible overlay powered by OpenRouter",
+  "description": "Open-source AI screen & meeting copilot \u2014 invisible overlay powered by OpenRouter",
   "main": "./out/main/index.js",
   "homepage": "https://github.com/nhathuy113/Specter-AI",
   "repository": {
@@ -146,7 +146,13 @@
       "provider": "github",
       "owner": "umairinayat",
       "repo": "Specter-AI"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "scripts/deepseek_cloak_chat.py",
+        "to": "deepseek_cloak_chat.py"
+      }
+    ]
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.24",

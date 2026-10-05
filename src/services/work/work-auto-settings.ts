@@ -1,14 +1,11 @@
-import type { AssistantMode } from '../../shared/constants'
 import { DEFAULT_SETTINGS } from '../../shared/constants'
 
 export interface WorkAutoEnablePatch {
   fullAutoMode: boolean
   continuousCoach: boolean
-  assistantMode: AssistantMode
   activityJournal: boolean
   smartCrop: boolean
   journalSmartCrop: boolean
-  workAreaCaptureEnabled: boolean
   workAreaDisplayId?: number
   detectIntervalSec?: number
   coachCooldownSec?: number
@@ -18,7 +15,7 @@ export function isWorkAutoModeEnabled(fullAutoMode: boolean, continuousCoach: bo
   return fullAutoMode && continuousCoach
 }
 
-/** Settings applied when double ⌘/ enables work auto mode. */
+/** Settings applied when Auto turns on. Does not change assistant mode. */
 export function buildWorkAutoEnablePatch(existing: {
   workAreaCaptureEnabled?: boolean | null
   workAreaDisplayId?: number | null
@@ -28,16 +25,11 @@ export function buildWorkAutoEnablePatch(existing: {
   const patch: WorkAutoEnablePatch = {
     fullAutoMode: true,
     continuousCoach: true,
-    assistantMode: 'work',
     activityJournal: true,
     smartCrop: true,
-    journalSmartCrop: true,
-    workAreaCaptureEnabled: false
+    journalSmartCrop: true
   }
 
-  if (!existing.workAreaDisplayId && existing.workAreaCaptureEnabled) {
-    patch.workAreaDisplayId = 0
-  }
   if (!existing.detectIntervalSec) {
     patch.detectIntervalSec = DEFAULT_SETTINGS.detectIntervalSec
   }

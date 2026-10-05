@@ -14,6 +14,7 @@ import { markQuizUserActivity } from '../../services/work/work-coach-quiz-escala
 import { workSessionKey } from '../../services/work/work-coach-session'
 import { isUserConfusionFeedback } from '../../services/work/work-coach-snippet'
 import { resolveWorkProblemProfile, shouldUseCursorWorkCoach } from '../../services/work/work-problem-profile'
+import { resolveBackgroundCaptureParams } from '../../services/capture/background-capture-params'
 import { extractScreenContext } from '../../services/context/context-router'
 import { isCoachDebugEnabled, patchCoachDebugCompletion, writeCoachDebug } from '../../services/coach/coach-debug'
 import { buildPlaybookContext, filterPlaybooksForMode } from '../../services/context/playbook-filter'
@@ -28,6 +29,7 @@ import type { Playbook } from '../../shared/types'
 import { isValidQuery, isValidMessageHistory } from './input-validation'
 import { completionGateway } from '../../services/ai/providers'
 import { completionCost, completionModelLabel } from '../../services/ai/completion-pricing'
+import { cloakDeepseekProfileReady, selectCompletionRoute } from '../../services/ai/completion-route'
 
 export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boolean): void {
   const requests = createRequestOwnership<object>()
@@ -65,8 +67,11 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
       return
     }
 
+    const assistantMode = (getSetting<string>('assistantMode') || DEFAULT_SETTINGS.assistantMode) as AssistantMode
+    const effectiveCoachMode = args.coachMode || assistantMode === 'work'
     const aiConfig = checkAiConfig()
-    if (!aiConfig.configured) {
+    const cloakCoach = !!effectiveCoachMode && cloakDeepseekProfileReady()
+    if (!aiConfig.configured && !cloakCoach) {
       event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, aiConfig.error || 'AI is not configured. Open Settings to continue.')
       return
     }
@@ -81,8 +86,7 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
     const aiProvider = aiConfig.provider
     const { model, apiKey } = readAiConnection(aiProvider, getSetting)
     const geminiApiKey = getSetting<string>('geminiApiKey') || ''
-    const assistantMode = (getSetting<string>('assistantMode') || DEFAULT_SETTINGS.assistantMode) as AssistantMode
-    const effectiveCoachMode = args.coachMode || assistantMode === 'work'
+    const route = selectCompletionRoute(!!effectiveCoachMode, aiProvider, cloakCoach)
     const systemPrompt = effectiveCoachMode
       ? getSetting<string>('coachSystemPrompt')
       : getSetting<string>('systemPrompt')
@@ -113,16 +117,22 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
       }
     } else if (args.includeScreen) {
       try {
-        const fullAuto = getSetting<boolean>('fullAutoMode')
-        const assistantModeCapture = (getSetting<string>('assistantMode') as AssistantMode) ?? DEFAULT_SETTINGS.assistantMode
-        const smartCrop =
-          assistantModeCapture === 'work'
-            ? true
-            : (getSetting<boolean>('smartCrop') ?? DEFAULT_SETTINGS.smartCrop)
-        const perceptionMode = fullAuto
-          ? ('ocr' as PerceptionMode)
-          : ((getSetting<string>('perceptionMode') || DEFAULT_SETTINGS.perceptionMode) as PerceptionMode)
-        const capture = await captureScreenText(smartCrop, perceptionMode, { skipAccessibility: fullAuto })
+        const p = resolveBackgroundCaptureParams((key) => getSetting(key))
+        let capture: Awaited<ReturnType<typeof captureScreenText>>
+        try {
+          capture = await captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+            skipAccessibility: p.skipAccessibility,
+            coachVision: p.coachVision
+          })
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : ''
+          if (!message.includes('already in progress')) throw err
+          await new Promise((resolve) => setTimeout(resolve, 500))
+          capture = await captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+            skipAccessibility: p.skipAccessibility,
+            coachVision: p.coachVision
+          })
+        }
         screenText = capture.text
         screenScreenshot = capture.screenshot
         useVision = capture.useVision ?? false
@@ -141,7 +151,17 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
           applyWorkProblemVision()
         }
       } catch (err: unknown) {
-        console.warn('[Specter] Screen capture failed:', err)
+        const message = err instanceof Error ? err.message : 'Screen capture failed'
+        console.warn('[Specter] Screen capture failed:', message)
+        if (isCurrent()) {
+          event.sender.send(
+            IPC_CHANNELS.AI_STREAM_ERROR,
+            message.includes('already in progress')
+              ? 'Screen capture is busy. Wait a second, then press Analyze Screen again.'
+              : message
+          )
+        }
+        return
       }
     }
 
@@ -265,8 +285,8 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
         if (isCurrent()) {
           const completionTokens = estimateTokens(completionContent)
           const totalTokens = promptTokens + completionTokens
-          const modelLabel = completionModelLabel(aiProvider, model)
-          const totalCost = completionCost(aiProvider, model, promptTokens, completionTokens, getCachedModels())
+          const modelLabel = route === 'deepseek-cloak' ? 'deepseek-cloak/web' : completionModelLabel(aiProvider, model)
+          const totalCost = route === 'deepseek-cloak' ? 0 : completionCost(aiProvider, model, promptTokens, completionTokens, getCachedModels())
           event.sender.send(IPC_CHANNELS.AI_STREAM_DONE, {
             promptTokens,
             completionTokens,
@@ -313,6 +333,10 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
       }
 
       try {
+        const includeDeepseekCompare =
+          cloakDeepseekProfileReady() &&
+          !!(useVision && screenScreenshot && !coachInstantReply)
+
         const isVisualQuiz = workProblemProfile?.kind === 'visual-quiz'
         if (isVisualQuiz && useVision && screenScreenshot && !coachInstantReply) {
           const sessionKey = workSessionKey(screenText, screenMetadata)
@@ -320,6 +344,7 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
             messages,
             geminiApiKey,
             screenScreenshot,
+            includeDeepseekCompare,
             event: target,
             sessionKey
           })
@@ -332,6 +357,7 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
           messages,
           geminiApiKey,
           useVision: useVision && !coachInstantReply,
+          includeDeepseekCompare,
           includeCursor: workProblemProfile ? shouldUseCursorWorkCoach(workProblemProfile) : false,
           screenScreenshot,
           screenText,
@@ -349,8 +375,8 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
       return
     }
 
-    await completionGateway.stream(aiProvider, {
-      messages, model, apiKey,
+    await completionGateway.stream(route, {
+      messages, model, apiKey: route === 'deepseek-cloak' ? '' : apiKey,
       screenshot: useVision && !coachInstantReply ? screenScreenshot : undefined
     }, streamCallbacks)
   })

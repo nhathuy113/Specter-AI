@@ -1,5 +1,6 @@
 import { createCompletionGateway } from './completion-gateway'
 import { cancelCodexStream, streamCodexCompletion } from './codex'
+import { cancelDeepseekCloak, streamDeepseekCloak } from './deepseek-cloak'
 import { cancelGeminiStream } from './gemini-api'
 import { streamGemini } from './gemini-completion'
 import { cancelOpenAIStream, streamOpenAICompletion } from './openai-api'
@@ -22,5 +23,9 @@ export const completionGateway = createCompletionGateway({
   openrouter: {
     stream: (r, c) => streamCompletion(r.messages, r.model, r.apiKey, c, r.maxTokens),
     cancel: cancelStream
+  },
+  'deepseek-cloak': {
+    stream: streamDeepseekCloak,
+    cancel: cancelDeepseekCloak
   }
 })
