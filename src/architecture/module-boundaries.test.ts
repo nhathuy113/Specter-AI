@@ -72,6 +72,10 @@ describe('architecture regression gates', () => {
       'src/services/work/work-coach-orchestrator.ts', 'src/services/work/work-coach-quiz-scheduler.ts',
       'src/services/work/work-coach-session-core.ts', 'src/services/work/work-coach-prompt.ts',
       'src/services/settings/settings-validation.ts', 'src/main/auto-capture-loop.ts',
+      'src/services/settings/settings-repository.ts', 'src/services/settings/conversation-repository.ts',
+      'src/services/settings/settings-migrations.ts', 'src/services/settings/lazy-settings-store.ts',
+      'src/services/audio/transcription-service.ts', 'src/services/audio/whisper-configuration.ts',
+      'src/services/audio/audio-format.ts', 'src/services/audio/transcript-buffer.ts',
       'src/main/ipc/input-validation.ts', 'src/main/ipc/rate-limiter.ts'
     ]
     const forbidden = new Set(['electron', 'electron-store', 'openai', '@cursor/sdk', 'child_process', 'fs', 'dotenv'])

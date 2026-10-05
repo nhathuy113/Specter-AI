@@ -15,6 +15,7 @@ The top-level source folders follow Electron's process boundaries:
 ## Service modules
 
 - `ai`: OpenRouter, OpenAI, Gemini and Codex clients; provider readiness checks.
+- `audio`: transcription configuration, format policy, transcript state and HTTP transport.
 - `capture`: accessibility, display selection, work-area planning, smart crop,
   perception and screen fingerprints.
 - `coach`: generic coach prompts, trigger state, tick coordination, diagnostics
@@ -78,6 +79,18 @@ exports remain available through the session facade for compatibility.
 
 Extend a concrete adapter or a policy in its owning module. Avoid forcing native
 client APIs into domain interfaces, or creating interfaces for every pure helper.
+
+Audio capture is a small main-process composition root. The transcription service
+receives settings and a transport port; multipart requests and deadlines belong
+to the HTTP adapter. Transcript buffers are instance-owned. Clearing a transcript
+aborts pending chunks and invalidates late responses, including transports that
+ignore cancellation. Audio is uploaded from memory without creating temporary files.
+
+Settings repositories receive persistence and secret-codec capabilities. Schema,
+migrations, native encryption and Electron store loading live in separate modules.
+Loading failures preserve the original configuration as a uniquely named backup;
+migration failures cannot trigger recovery. Conversation updates copy the stored
+array before writing, so failed persistence does not mutate loaded history.
 
 ## Preventing regressions
 
