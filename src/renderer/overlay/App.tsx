@@ -67,7 +67,7 @@ export default function App() {
   } | null>(null)
   const [coachChangeNotice, setCoachChangeNotice] = useState<string | null>(null)
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesScrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const measureRef = useRef<HTMLDivElement>(null)
@@ -148,7 +148,9 @@ export default function App() {
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const box = messagesScrollRef.current
+    if (!box) return
+    box.scrollTop = box.scrollHeight
   }, [])
 
   // Load theme and selected model from settings
@@ -242,9 +244,12 @@ export default function App() {
       })
 
       requestAnimationFrame(() => {
-        if (generation === layoutGenerationRef.current) {
-          setLayoutLocked(true)
-        }
+        if (generation !== layoutGenerationRef.current) return
+        setLayoutLocked(true)
+        requestAnimationFrame(() => {
+          const box = messagesScrollRef.current
+          if (box) box.scrollTop = box.scrollHeight
+        })
       })
     })
 
@@ -1309,7 +1314,7 @@ export default function App() {
       {(() => {
         const isWorkCoachLayout = assistantMode === 'work' && !isMinimized
         return (
-      <div className={`specter-overlay-messages flex-1 overflow-y-auto px-4 py-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''} ${isWorkCoachLayout ? 'flex flex-col gap-2 min-h-0' : 'space-y-3'}`}>
+      <div ref={messagesScrollRef} className={`specter-overlay-messages flex-1 overflow-y-auto px-4 py-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''} ${isWorkCoachLayout ? 'flex flex-col gap-2 min-h-0' : 'space-y-3'}`}>
         {isWorkCoachLayout ? (
           <>
             <div className="flex items-start justify-between gap-2 shrink-0 px-1">
@@ -1498,7 +1503,6 @@ export default function App() {
           </div>
         )}
 
-        <div ref={messagesEndRef} />
       </div>
         )
       })()}
