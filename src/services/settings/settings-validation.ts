@@ -1,4 +1,5 @@
 import { ASSISTANT_MODES, PERCEPTION_MODES } from '../../shared/constants'
+import { isWatchFrame } from '../capture/watch-frame'
 
 // --- Settings value validation ---
 
@@ -79,7 +80,8 @@ const SETTINGS_KEY_VALIDATORS: Record<string, (value: unknown) => boolean> = {
   autoHideDelay: (v) => typeof v === 'number' && v >= 0 && v <= 300,
   smartCrop: (v) => typeof v === 'boolean',
   workAreaCaptureEnabled: (v) => typeof v === 'boolean',
-  workAreaDisplayId: (v) => typeof v === 'number' && v >= 0,
+  workAreaDisplayId: (v) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0,
+  watchFrame: (v) => isWatchFrame(v),
   workCoachSession: (v) => {
     if (v === null || v === undefined) return true
     if (typeof v !== 'object') return false

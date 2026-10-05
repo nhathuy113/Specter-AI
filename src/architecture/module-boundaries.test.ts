@@ -76,6 +76,8 @@ describe('architecture regression gates', () => {
       'src/services/settings/settings-repository.ts', 'src/services/settings/conversation-repository.ts',
       'src/services/settings/settings-migrations.ts', 'src/services/settings/lazy-settings-store.ts',
       'src/services/audio/transcription-service.ts', 'src/services/audio/whisper-configuration.ts',
+      'src/services/capture/watch-frame.ts', 'src/services/capture/capture-preview.ts',
+      'src/services/capture/capture-process.ts', 'src/services/ui/watch-frame-drag.ts',
       'src/services/audio/audio-format.ts', 'src/services/audio/transcript-buffer.ts',
       'src/main/ipc/input-validation.ts', 'src/main/ipc/rate-limiter.ts'
     ]

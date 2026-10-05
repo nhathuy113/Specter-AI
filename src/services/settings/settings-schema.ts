@@ -56,5 +56,15 @@ export const settingsSchema = {
   journalSmartCrop: { type: 'boolean' as const, default: DEFAULT_SETTINGS.journalSmartCrop },
   activityJournalLog: { type: 'array' as const, default: [] },
   workAreaCaptureEnabled: { type: 'boolean' as const, default: DEFAULT_SETTINGS.workAreaCaptureEnabled },
-  workAreaDisplayId: { type: 'number' as const, default: DEFAULT_SETTINGS.workAreaDisplayId }
+  workAreaDisplayId: { type: 'number' as const, default: DEFAULT_SETTINGS.workAreaDisplayId },
+  watchFrame: {
+    type: 'object' as const,
+    properties: {
+      x: { type: 'number' as const },
+      y: { type: 'number' as const },
+      width: { type: 'number' as const },
+      height: { type: 'number' as const }
+    },
+    default: DEFAULT_SETTINGS.watchFrame
+  }
 }

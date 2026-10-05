@@ -107,6 +107,14 @@ export default function Settings() {
   const [geminiKeyError, setGeminiKeyError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [displays, setDisplays] = useState<Array<{ id: number; label: string; bounds: { width: number; height: number }; isPrimary: boolean }>>([])
+  const [autoCapturePreview, setAutoCapturePreview] = useState<{
+    screenshot: string
+    appName?: string
+    windowTitle?: string
+    textPreview: string
+    useVision: boolean
+  } | null>(null)
+  const [autoCapturePreviewLoading, setAutoCapturePreviewLoading] = useState(false)
 
   // Hotkey recording state
   const [recordingHotkey, setRecordingHotkey] = useState<keyof SettingsState['hotkeys'] | null>(null)
@@ -912,6 +920,57 @@ export default function Settings() {
                 </select>
               </div>
             )}
+            <div className="pt-1">
+              <button
+                type="button"
+                disabled={autoCapturePreviewLoading}
+                onClick={async () => {
+                  setAutoCapturePreviewLoading(true)
+                  setError(null)
+                  try {
+                    const preview = await window.specterAPI.captureAutoFocusPreview({
+                      workAreaCaptureEnabled: settings.workAreaCaptureEnabled,
+                      workAreaDisplayId: settings.workAreaDisplayId,
+                      fullAutoMode: settings.fullAutoMode,
+                      assistantMode: settings.assistantMode,
+                      smartCrop: settings.smartCrop,
+                      perceptionMode: settings.perceptionMode
+                    })
+                    setAutoCapturePreview(preview)
+                  } catch (err: unknown) {
+                    setAutoCapturePreview(null)
+                    setError(err instanceof Error ? err.message : 'Capture preview failed')
+                  } finally {
+                    setAutoCapturePreviewLoading(false)
+                  }
+                }}
+                className="text-sm px-3 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50"
+              >
+                {autoCapturePreviewLoading ? 'Capturing…' : 'Preview full-auto capture'}
+              </button>
+              <p className="text-xs text-white/20 mt-1.5">
+                Xem vùng Specter sẽ chụp. Preview không gửi ảnh cho AI hay thay đổi settings; kéo khung Watch để chỉnh vùng theo dõi.
+              </p>
+              {autoCapturePreview?.screenshot && (
+                <div className="mt-3 space-y-2 rounded-xl border border-white/10 bg-black/30 p-3">
+                  <p className="text-xs text-white/40">
+                    {autoCapturePreview.appName || 'Unknown app'}
+                    {autoCapturePreview.windowTitle ? ` · ${autoCapturePreview.windowTitle}` : ''}
+                    {autoCapturePreview.useVision ? ' · screenshot → model' : ' · text only'}
+                  </p>
+                  <img
+                    src={`data:image/png;base64,${autoCapturePreview.screenshot}`}
+                    alt="Full-auto capture preview"
+                    className="max-w-full rounded-lg border border-white/10"
+                  />
+                  {autoCapturePreview.textPreview ? (
+                    <pre className="text-xs text-white/50 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                      {autoCapturePreview.textPreview}
+                    </pre>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
 
           {settings.autoCapture && (
@@ -1071,7 +1130,7 @@ export default function Settings() {
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm
                          text-white/90 focus:border-violet-500/40 focus:outline-none"
             >
-              {ASSISTANT_MODES.map((mode) => (
+              {ASSISTANT_MODES.filter((mode) => mode !== 'work').map((mode) => (
                 <option key={mode} value={mode} className="bg-zinc-900">
                   {ASSISTANT_MODE_LABELS[mode]}
                 </option>

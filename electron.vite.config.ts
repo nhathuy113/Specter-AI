@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ include: ['sharp'] })],
     build: {
       outDir: 'out/main',
       rollupOptions: {
@@ -33,7 +33,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           overlay: resolve(__dirname, 'src/renderer/overlay/index.html'),
-          dashboard: resolve(__dirname, 'src/renderer/dashboard/index.html')
+          dashboard: resolve(__dirname, 'src/renderer/dashboard/index.html'),
+          watchFrame: resolve(__dirname, 'src/renderer/watch-frame/index.html')
         }
       }
     },

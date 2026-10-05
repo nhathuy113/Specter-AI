@@ -14,6 +14,7 @@ import { registerCaptureIpcHandlers } from './ipc/capture-handlers'
 import { registerSettingsIpcHandlers } from './ipc/settings-handlers'
 import { registerDataIpcHandlers } from './ipc/data-handlers'
 import { registerAppIpcHandlers } from './ipc/app-handlers'
+import { registerWatchFrameIpc } from './watch-frame-window'
 
 export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   const checkRateLimit = createRateLimiter({
@@ -34,6 +35,7 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   registerCaptureIpcHandlers(checkRateLimit)
   registerSettingsIpcHandlers(overlayWindow, autoCapture.sync)
   registerDataIpcHandlers()
+  registerWatchFrameIpc()
   registerAppIpcHandlers(overlayWindow, autoCapture.stop)
   overlayWindow.once('closed', autoCapture.stop)
 

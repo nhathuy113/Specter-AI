@@ -39,17 +39,25 @@ describe('bootstrapSettingsFromEnv', () => {
   })
 
   it('seeds assistant and perception modes from env', () => {
-    process.env.ASSISTANT_MODE = 'work'
+    process.env.ASSISTANT_MODE = 'game'
     process.env.PERCEPTION_MODE = 'vision'
 
     bootstrapSettingsFromEnv()
 
-    expect(setSetting).toHaveBeenCalledWith('assistantMode', 'work')
+    expect(setSetting).toHaveBeenCalledWith('assistantMode', 'game')
     expect(setSetting).toHaveBeenCalledWith('perceptionMode', 'vision')
   })
 
   it('ignores invalid assistant mode values', () => {
     process.env.ASSISTANT_MODE = 'invalid-mode'
+
+    bootstrapSettingsFromEnv()
+
+    expect(setSetting).not.toHaveBeenCalledWith('assistantMode', expect.anything())
+  })
+
+  it('ignores removed work assistant mode', () => {
+    process.env.ASSISTANT_MODE = 'work'
 
     bootstrapSettingsFromEnv()
 

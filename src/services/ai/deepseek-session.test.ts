@@ -12,7 +12,10 @@ describe('DeepSeek browser session', () => {
     const a = callbacks(), b = callbacks()
     const first = session.stream(request, a), second = session.stream(request, b)
     await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce())
-    expect(JSON.parse(execute.mock.calls[0][0])).toEqual({ prompt: 'hello', image_base64: 'b64' })
+    expect(JSON.parse(execute.mock.calls[0][0])).toEqual({
+      prompt: 'hello\n\nTrả lời bằng tiếng Việt.',
+      image_base64: 'b64'
+    })
     finish('first')
     await Promise.all([first, second])
     expect(a.onChunk).toHaveBeenCalledWith('first')

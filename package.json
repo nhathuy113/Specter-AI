@@ -27,7 +27,7 @@
     ]
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev -w",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
@@ -41,13 +41,16 @@
     "test:live": "vitest run --config vitest.live.config.ts",
     "test:gate": "vitest run src/services/ui/ux-behavior-gate.test.ts src/services/ui/overlay-placement.test.ts src/services/ui/hotkey-double-tap.test.ts src/services/work/work-auto-settings.test.ts src/services/capture/work-area-capture.test.ts src/main/macos-front-window.test.ts",
     "test:watch": "vitest",
+    "capture:build": "go build -C capture -o bin/specter-capture .",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "pnpm run build && electron-builder --dir",
     "build:win": "pnpm run build && electron-builder --win",
-    "build:mac": "pnpm run build && electron-builder --mac",
+    "build:mac": "pnpm capture:build:mac && pnpm run build && electron-builder --mac",
     "build:linux": "pnpm run build && electron-builder --linux",
-    "build:all": "pnpm run build && electron-builder --win --mac --linux",
-    "build:docker": "docker build -t specter-ai:latest -f Dockerfile ."
+    "build:all": "pnpm capture:build:mac && pnpm run build && electron-builder --win --mac --linux",
+    "build:docker": "docker build -t specter-ai:latest -f Dockerfile .",
+    "test:capture": "go test -C capture ./...",
+    "capture:build:mac": "node scripts/build-mac-capture.mjs"
   },
   "build": {
     "appId": "com.specter.ai",
@@ -62,6 +65,12 @@
       "out/**/*",
       "!out/**/*.map",
       "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts/deepseek_cloak_chat.py",
+        "to": "deepseek_cloak_chat.py"
+      }
     ],
     "win": {
       "target": [
@@ -112,7 +121,13 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Specter AI needs microphone access to transcribe meeting audio.",
         "NSScreenCaptureUsageDescription": "Specter AI needs screen capture access to read on-screen content via OCR."
-      }
+      },
+      "extraResources": [
+        {
+          "from": "capture/bin/specter-capture-${arch}",
+          "to": "specter-capture"
+        }
+      ]
     },
     "dmg": {
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
@@ -146,13 +161,7 @@
       "provider": "github",
       "owner": "umairinayat",
       "repo": "Specter-AI"
-    },
-    "extraResources": [
-      {
-        "from": "scripts/deepseek_cloak_chat.py",
-        "to": "deepseek_cloak_chat.py"
-      }
-    ]
+    }
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.24",

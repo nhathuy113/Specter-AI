@@ -1,16 +1,15 @@
 // Screen capture + OCR pipeline — uses worker thread for OCR to avoid blocking main
 import { Worker } from 'worker_threads'
 import path from 'path'
-import { execFile, execSync } from 'child_process'
-import { promisify } from 'util'
-import fs from 'fs'
-import os from 'os'
+import { execSync } from 'child_process'
 import screenshot from 'screenshot-desktop'
 import { screen } from 'electron'
-import type { ScreenCaptureResult, PerceptionMode } from '../shared/types'
+import type { ScreenCaptureResult, PerceptionMode, CapturePreviewOptions, CapturePreviewResult } from '../shared/types'
 import { captureAccessibilityText } from '../services/capture/accessibility-capture'
 import { resolveCaptureContext } from '../services/capture/capture-context'
 import { fingerprintImage } from '../services/capture/image-fingerprint'
+import { createCaptureSettingsReader } from '../services/capture/capture-preview'
+import { resolveBackgroundCaptureParams } from '../services/capture/background-capture-params'
 import { getSetting } from '../services/settings/store'
 import { DEFAULT_SETTINGS } from '../shared/constants'
 import {
@@ -21,32 +20,18 @@ import {
 } from '../services/capture/display-capture'
 import { resolveSmartCapturePlan } from '../services/capture/smart-capture'
 import { planPinnedWorkDisplay, workAreaCaptureActive } from '../services/capture/work-area-capture'
+import { planWatchFrameCapture, type WatchFrame } from '../services/capture/watch-frame'
 import { getOverlayWindow, isOverlayBackgroundWatch, releaseForegroundAfterBackgroundWork, showOverlay } from './overlay-window'
 import { getMacOSFrontWindowInfo, getMacOSBrowserWindows, isSpecterForeground, rememberMacOSForegroundForRestore } from './macos-front-window'
+import { getLiveWatchFrame, suspendWatchFrameForCapture } from './watch-frame-window'
+import { captureScreenPng } from './go-capture'
 import { rememberWorkWindow, resolveWorkWindowForCrop } from './work-window-memory'
 
 let isCapturing = false
 
-const execFileAsync = promisify(execFile)
-
-/** macOS screencapture -x: no flash/sound, less likely to activate Specter than screenshot-desktop. */
+/** macOS screenshot via the Go capture binary (screencapture -x, no flash). */
 async function captureMacOSDisplayPng(displayIndex?: number): Promise<Buffer> {
-  const tmp = path.join(os.tmpdir(), `specter-cap-${Date.now()}-${Math.random().toString(36).slice(2)}.png`)
-  const args = ['-x']
-  if (displayIndex !== undefined) {
-    args.push('-D', String(displayIndex + 1))
-  }
-  args.push(tmp)
-  try {
-    await execFileAsync('screencapture', args, { timeout: 15000 })
-    return fs.readFileSync(tmp)
-  } finally {
-    try {
-      fs.unlinkSync(tmp)
-    } catch {
-      /* ignore */
-    }
-  }
+  return captureScreenPng(displayIndex)
 }
 
 interface OCRResponse {
@@ -286,7 +271,7 @@ async function cropImageBuffer(
 }
 
 async function captureDisplayScreenshot(displayIndex?: number): Promise<Buffer> {
-  if (process.platform === 'darwin' && isOverlayBackgroundWatch()) {
+  if (process.platform === 'darwin') {
     return captureMacOSDisplayPng(displayIndex)
   }
   if (displayIndex === undefined) {
@@ -332,8 +317,9 @@ async function captureFromPlan(plan: SmartCropPlan): Promise<Buffer> {
 export async function captureScreenText(
   activeWindowOnly = false,
   perceptionMode?: PerceptionMode,
-  opts: { skipAccessibility?: boolean; coachVision?: boolean } = {}
+  opts: { skipAccessibility?: boolean; coachVision?: boolean; captureSettings?: CapturePreviewOptions } = {}
 ): Promise<ScreenCaptureResult> {
+  const readCaptureSetting = createCaptureSettingsReader(opts.captureSettings ?? {}, getSetting)
   if (isCapturing) {
     throw new Error('Screen capture already in progress')
   }
@@ -379,19 +365,29 @@ export async function captureScreenText(
   }
 
   const wasVisible = hideOverlayForCapture()
+  let restoreFrame = () => {}
   try {
-    if (wasVisible) await waitForRepaint()
+    const frame = suspendWatchFrameForCapture()
+    restoreFrame = frame.restore
+    if (wasVisible || frame.hidden) await waitForRepaint()
 
     let imgBuffer: Buffer
     const displays = listElectronDisplays()
     const displayCount = displays.length
-    const workEnabled = getSetting<boolean>('workAreaCaptureEnabled')
-    const workDisplayId = getSetting<number>('workAreaDisplayId')
+    const workEnabled = readCaptureSetting<boolean>('workAreaCaptureEnabled')
+    const workDisplayId = readCaptureSetting<number>('workAreaDisplayId')
     const pinnedPlan =
       workAreaCaptureActive(workEnabled, workDisplayId) &&
       planPinnedWorkDisplay(displays, workDisplayId)
+    const frameOn = !!(readCaptureSetting<boolean>('fullAutoMode') || readCaptureSetting<boolean>('continuousCoach'))
+    const watchFrame = frameOn ? (getLiveWatchFrame() ?? readCaptureSetting<WatchFrame>('watchFrame')) : undefined
+    const framePlan = planWatchFrameCapture(watchFrame, displays)
+    const frameDisplay = framePlan?.display
 
-    if (pinnedPlan) {
+    if (framePlan) {
+      imgBuffer = await captureFromPlan(framePlan)
+      console.info(`[Specter] Watch frame on ${framePlan.display.label}`)
+    } else if (pinnedPlan) {
       imgBuffer = await captureFromPlan(pinnedPlan)
       console.info(`[Specter] Work area capture: ${pinnedPlan.display.label} (full display)`)
     } else if (activeWindowOnly) {
@@ -414,12 +410,13 @@ export async function captureScreenText(
     }
 
     const base64 = imgBuffer.toString('base64')
+    restoreFrame()
 
     // Restore overlay immediately after screenshot (before slow OCR)
     if (wasVisible) restoreOverlay()
 
     const mode = perceptionMode
-      ?? (getSetting<string>('perceptionMode') as PerceptionMode)
+      ?? (readCaptureSetting<string>('perceptionMode') as PerceptionMode)
       ?? DEFAULT_SETTINGS.perceptionMode
 
     const axResult =
@@ -427,12 +424,16 @@ export async function captureScreenText(
         ? null
         : captureAccessibilityText()
 
-    const appName = pinnedPlan
-      ? `Work: ${pinnedPlan.display.label}`
-      : (frontWindowMeta?.appName ?? axResult?.appName)
-    const windowTitle = pinnedPlan
-      ? 'pinned-work-display'
-      : (frontWindowMeta?.windowTitle ?? axResult?.windowTitle)
+    const appName = frameDisplay
+      ? `Watch: ${frameDisplay.label}`
+      : pinnedPlan
+        ? `Work: ${pinnedPlan.display.label}`
+        : (frontWindowMeta?.appName ?? axResult?.appName)
+    const windowTitle = frameDisplay
+      ? 'watch-frame'
+      : pinnedPlan
+        ? 'pinned-work-display'
+        : (frontWindowMeta?.windowTitle ?? axResult?.windowTitle)
 
     const context = await resolveCaptureContext(imgBuffer, {
       coachVision: !!opts.coachVision, mode, appName, windowTitle, accessibility: axResult
@@ -452,8 +453,28 @@ export async function captureScreenText(
     const message = err instanceof Error ? err.message : 'Screen capture failed'
     throw new Error(message)
   } finally {
+    restoreFrame()
     isCapturing = false
     releaseForegroundAfterBackgroundWork()
+  }
+}
+
+/** Preview what full-auto / watch capture sees (same path as background coach). */
+export async function captureAutoFocusPreview(overrides: CapturePreviewOptions = {}): Promise<CapturePreviewResult> {
+  const p = resolveBackgroundCaptureParams(createCaptureSettingsReader(overrides, getSetting))
+  const capture = await captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+    skipAccessibility: p.skipAccessibility,
+    coachVision: p.coachVision,
+    captureSettings: overrides
+  })
+  const textPreview = (capture.text || capture.fingerprintText || '').trim().slice(0, 400)
+  return {
+    screenshot: capture.screenshot ?? '',
+    timestamp: capture.timestamp,
+    appName: capture.appName,
+    windowTitle: capture.windowTitle,
+    textPreview,
+    useVision: !!capture.useVision
   }
 }
 
@@ -463,22 +484,20 @@ export async function captureScreenText(
  * The overlay is hidden during capture.
  */
 export async function captureScreenOnly(): Promise<{ screenshot: string; timestamp: number }> {
+  if (isCapturing) throw new Error('Screen capture already in progress')
+  isCapturing = true
   const wasVisible = hideOverlayForCapture()
+  let restoreFrame = () => {}
   try {
-    if (wasVisible) await waitForRepaint()
-
-    const imgBuffer = await screenshot({ format: 'png' })
-
+    const frame = suspendWatchFrameForCapture()
+    restoreFrame = frame.restore
+    if (wasVisible || frame.hidden) await waitForRepaint()
+    const imgBuffer = await captureDisplayScreenshot()
+    return { screenshot: imgBuffer.toString('base64'), timestamp: Date.now() }
+  } finally {
+    restoreFrame()
     if (wasVisible) restoreOverlay()
-
-    return {
-      screenshot: imgBuffer.toString('base64'),
-      timestamp: Date.now()
-    }
-  } catch (err: unknown) {
-    if (wasVisible) restoreOverlay()
-    const message = err instanceof Error ? err.message : 'Screen capture failed'
-    throw new Error(message)
+    isCapturing = false
   }
 }
 
@@ -519,8 +538,11 @@ export async function captureGameFrame(): Promise<{
   }
 
   const wasVisible = hideOverlayForCapture()
+  let restoreFrame = () => {}
   try {
-    if (wasVisible) await waitForRepaint()
+    const frame = suspendWatchFrameForCapture()
+    restoreFrame = frame.restore
+    if (wasVisible || frame.hidden) await waitForRepaint()
 
     const displays = listElectronDisplays()
     const plan = resolveSmartCapturePlan(activeWindowBounds, displays)
@@ -545,6 +567,7 @@ export async function captureGameFrame(): Promise<{
     const message = err instanceof Error ? err.message : 'Game frame capture failed'
     throw new Error(message)
   } finally {
+    restoreFrame()
     isCapturing = false
     releaseForegroundAfterBackgroundWork()
   }

@@ -12,6 +12,10 @@ export const IPC_CHANNELS = {
   OVERLAY_EXPAND: 'overlay:expand',
   OVERLAY_COLLAPSE: 'overlay:collapse',
   OVERLAY_FIT_CONTENT: 'overlay:fit-content',
+  WATCH_FRAME_DRAGGING: 'watch-frame:dragging',
+  WATCH_FRAME_GET: 'watch-frame:get',
+  WATCH_FRAME_SET: 'watch-frame:set',
+  WATCH_FRAME_PASSTHROUGH: 'watch-frame:passthrough',
 
   // AI
   AI_CHECK_CONFIG: 'ai:check-config',
@@ -28,6 +32,7 @@ export const IPC_CHANNELS = {
   // Screen capture
   SCREEN_CAPTURE: 'screen:capture',
   SCREEN_CAPTURE_PREVIEW: 'screen:capture-preview',
+  SCREEN_CAPTURE_AUTO_PREVIEW: 'screen:capture-auto-preview',
   SCREEN_CAPTURE_RESULT: 'screen:capture-result',
   SCREEN_CAPTURE_ERROR: 'screen:capture-error',
 

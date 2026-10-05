@@ -1,8 +1,9 @@
+import { parseCapturePreviewOptions } from '../../services/capture/capture-preview'
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { validateGeminiApiKey } from '../../services/ai/gemini-api'
 import { checkAiConfig } from '../../services/ai/ai-config'
-import { captureScreenText, captureScreenOnly } from '../screen-capture'
+import { captureScreenText, captureScreenOnly, captureAutoFocusPreview } from '../screen-capture'
 import { transcribeAudio, checkWhisperConfig } from '../audio-capture'
 
 export function registerCaptureIpcHandlers(checkRateLimit: (channel: string) => boolean): void {
@@ -20,6 +21,15 @@ export function registerCaptureIpcHandlers(checkRateLimit: (channel: string) => 
   ipcMain.handle(IPC_CHANNELS.SCREEN_CAPTURE_PREVIEW, async () => {
     try {
       return await captureScreenOnly()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Screen capture failed'
+      throw new Error(message)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCREEN_CAPTURE_AUTO_PREVIEW, async (_event, options: unknown) => {
+    try {
+      return await captureAutoFocusPreview(parseCapturePreviewOptions(options))
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Screen capture failed'
       throw new Error(message)

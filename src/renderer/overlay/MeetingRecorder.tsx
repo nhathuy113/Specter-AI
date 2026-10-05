@@ -218,7 +218,7 @@ export default function MeetingRecorder({ onTranscriptReady, disabled, compact }
   // Compact variant for quick-actions row
   if (compact) {
     return (
-      <>
+      <div className="flex flex-col items-end gap-1 shrink-0">
         {state === 'idle' && (
           <button
             onClick={startRecording}
@@ -252,7 +252,10 @@ export default function MeetingRecorder({ onTranscriptReady, disabled, compact }
             Transcribing...
           </div>
         )}
-      </>
+        {error && (
+          <p className="text-red-400/80 text-[10px] max-w-[180px] leading-snug text-right">{error}</p>
+        )}
+      </div>
     )
   }
 

@@ -6,18 +6,43 @@ Last stdout line is JSON: {"text": "..."} or {"error": "..."}.
 import base64
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 
 PROFILE = Path.home() / ".cloakbrowser" / "profiles" / "cloak-nhathuy113"
+CHAT_URL_FILE = Path.home() / ".specter" / "deepseek-chat-url"
+CHAT_URL = re.compile(r"https://chat\.deepseek\.com/a/chat/s/([^/?#]+)")
+HOME_URL = "https://chat.deepseek.com/"
 SKIP = {
     "DeepThink",
     "Search",
     "AI-generated, for reference only",
     "One more step before you proceed...",
 }
+
+
+def chat_url_from(url: str) -> str | None:
+    match = CHAT_URL.search(url.strip())
+    if not match:
+        return None
+    return f"https://chat.deepseek.com/a/chat/s/{match.group(1)}"
+
+
+def load_chat_url() -> str | None:
+    if not CHAT_URL_FILE.is_file():
+        return None
+    return chat_url_from(CHAT_URL_FILE.read_text(encoding="utf-8"))
+
+
+def save_chat_url(url: str) -> None:
+    chat = chat_url_from(url)
+    if not chat:
+        return
+    CHAT_URL_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CHAT_URL_FILE.write_text(chat + "\n", encoding="utf-8")
 
 
 def emit(payload: dict) -> None:
@@ -52,12 +77,20 @@ def reply_blocks(page) -> list[str]:
     )
 
 
-def latest_reply(page, prompt: str, previous_count: int = 0) -> str:
+def latest_reply(page, prompt: str) -> str:
     blocks = reply_blocks(page)
-    # Never accept an old reply while the new turn is still being generated.
-    if len(blocks) <= previous_count:
+    if not blocks:
         return ""
     return clean_reply(blocks[-1], prompt)
+
+
+def still_generating(page) -> bool:
+    return bool(page.evaluate(
+        """() => {
+          const btn = document.querySelector('.ds-button--primary.ds-button--circle')
+          return !!btn && !btn.classList.contains('ds-button--disabled')
+        }"""
+    ))
 
 
 def attach_screenshot(page, image_b64: str) -> None:
@@ -94,29 +127,36 @@ def main() -> int:
     ctx = launch_persistent_context(str(PROFILE), headless=headless)
     try:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto("https://chat.deepseek.com/", wait_until="domcontentloaded", timeout=60000)
+        saved = load_chat_url()
+        page.goto(saved or HOME_URL, wait_until="domcontentloaded", timeout=60000)
         box = page.locator("textarea[placeholder='Message DeepSeek']")
-        box.wait_for(timeout=20000)
+        try:
+            box.wait_for(timeout=20000)
+        except Exception:
+            if not saved:
+                raise
+            CHAT_URL_FILE.unlink(missing_ok=True)
+            page.goto(HOME_URL, wait_until="domcontentloaded", timeout=60000)
+            box.wait_for(timeout=20000)
         if image_b64:
             attach_screenshot(page, image_b64)
-        previous_count = len(reply_blocks(page))
+        before = latest_reply(page, prompt[:8000])
         box.fill(prompt[:8000])
         box.press("Enter")
 
         last = ""
-        stable = 0
-        for _ in range(45):
+        for _ in range(90):
             page.wait_for_timeout(1000)
-            reply = latest_reply(page, prompt[:8000], previous_count)
-            if reply and reply == last:
-                stable += 1
-                if stable >= 2:
-                    emit({"text": reply})
-                    return 0
-            else:
-                stable = 0
-                last = reply
-        if last:
+            if still_generating(page):
+                continue
+            reply = latest_reply(page, prompt[:8000])
+            if reply and reply != before:
+                save_chat_url(page.url)
+                emit({"text": reply})
+                return 0
+            last = reply
+        if last and last != before:
+            save_chat_url(page.url)
             emit({"text": last})
             return 0
         emit({"error": "DeepSeek reply timed out"})
@@ -125,7 +165,16 @@ def main() -> int:
         ctx.close()
 
 
+def self_check() -> None:
+    assert chat_url_from("https://chat.deepseek.com/a/chat/s/abc-1") == "https://chat.deepseek.com/a/chat/s/abc-1"
+    assert chat_url_from("https://chat.deepseek.com/a/chat/s/abc-1?x=1") == "https://chat.deepseek.com/a/chat/s/abc-1"
+    assert chat_url_from("https://chat.deepseek.com/") is None
+
+
 if __name__ == "__main__":
+    if "--self-check" in sys.argv:
+        self_check()
+        raise SystemExit(0)
     try:
         raise SystemExit(main())
     except SystemExit:

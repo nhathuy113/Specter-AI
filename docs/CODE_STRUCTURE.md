@@ -132,3 +132,23 @@ markdown block and excludes replies from earlier turns.
 Quiz comparison starts DeepSeek beside Gemini Lite without waiting for its result.
 Gemini's detailed explanation keeps its existing delay. Quiz generation ownership
 suppresses comparison updates after the user moves to another question.
+
+## Watch frame and capture preview
+
+Watch / Auto shows a separate transparent frame. Drag the label to move it or the
+border to resize it. The center remains click-through. IPC mutations are accepted
+only from that frame's renderer; bounds are clamped to one display and persisted
+on release with debounced writes while dragging. Frame loading, closing and capture
+suspension prevent obsolete callbacks from showing a window again. Capture uses
+live bounds and hides the frame while obtaining a screenshot. Saved frames recover
+onto a connected display when a monitor is removed.
+
+The settings preview uses a validated, per-request settings overlay. It neither
+persists form values nor starts Watch / Auto, and does not send the image to AI.
+
+macOS capture can use the Go helper with a native command fallback during development.
+`pnpm test:capture` tests native capture policy and temporary file cleanup without
+capturing the screen. `pnpm capture:build` builds the development helper;
+`pnpm capture:build:mac` builds x64 and arm64 resource binaries. `pnpm build:mac`
+selects the matching binary for each architecture. Windows/Linux packages do not
+include the macOS helper. Capture subprocesses have output limits and deadlines.

@@ -11,7 +11,7 @@ export function createDeepseekSession(execute: DeepseekExecutor): CompletionProv
       const controller = new AbortController()
       pending.add(controller)
       const payload = JSON.stringify({
-        prompt: request.messages.map(message => message.content).filter(Boolean).join('\n\n'),
+        prompt: `${request.messages.map(message => message.content).filter(Boolean).join('\n\n')}\n\nTrả lời bằng tiếng Việt.`,
         ...(request.screenshot ? { image_base64: request.screenshot } : {})
       })
       const task = tail.catch(() => {}).then(async () => {

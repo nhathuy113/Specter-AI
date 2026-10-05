@@ -9,6 +9,8 @@ import { Send, Mic, MicOff, Monitor, Settings, GripVertical, Minimize2, Maximize
 import type { StreamDoneData } from '../../preload/index'
 import type { Message, Conversation, AssistantMode } from '../../shared/types'
 import {
+  WORK_COACH_CURSOR_LABEL,
+  WORK_COACH_DEEPSEEK_LABEL,
   WORK_COACH_TRIPLE_LABELS,
   resolveWorkCoachPanelPlaceholders
 } from '../../shared/constants'
@@ -640,11 +642,7 @@ export default function App() {
     )
 
     if (assistantModeRef.current === 'work') {
-      setCoachTriple({
-        labels: ['Gemini 3.1 Flash Lite', 'Gemini 3.6 Flash'],
-        panels: ['', ''],
-        panelDone: [false, false]
-      })
+      setCoachTriple(null)
       document.documentElement.classList.add('specter-triple-coach')
     }
 
@@ -1116,9 +1114,10 @@ export default function App() {
           <span className="text-white/60 text-xs font-medium tracking-wider uppercase">
             Specter AI
           </span>
-          {assistantMode === 'work' && workAutoEnabled !== null && (
+          {workAutoEnabled !== null && (
             <button
               onClick={() => void toggleWorkAuto()}
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               className={`ml-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border transition-colors ${
                 workAutoEnabled
                   ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
@@ -1311,13 +1310,13 @@ export default function App() {
       <div className={`specter-overlay-messages flex-1 overflow-y-auto px-4 py-3 scrollbar-thin scrollbar-thumb-white/10 ${showHistory ? 'hidden' : ''} ${isWorkCoachLayout ? 'flex flex-col gap-2 min-h-0' : 'space-y-3'}`}>
         {isWorkCoachLayout ? (
           <>
-            <div className="flex items-center gap-2 shrink-0 px-1">
+            <div className="flex items-start justify-between gap-2 shrink-0 px-1">
               <div className="w-8 h-8 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
                 <Sparkles className="w-4 h-4 text-violet-300/80" />
               </div>
-              <div className="text-left min-w-0">
+              <div className="text-left min-w-0 flex-1">
                 <h3 className="text-white/80 text-sm font-semibold leading-tight flex items-center gap-2 flex-wrap">
-                  <span>Work coach · {coachTriple?.labels.length === 3 ? '3 models' : coachTriple ? '2 models' : '2–3 models'}</span>
+                  <span>Work coach · {coachTriple?.labels.length ? `${coachTriple.labels.length} models` : '2–4 models'}</span>
                   {workAutoEnabled !== null && (
                     <button
                       onClick={() => void toggleWorkAuto()}
@@ -1345,6 +1344,11 @@ export default function App() {
                         : 'Tự chọn theo loại bài trên màn hình')}
                 </p>
               </div>
+              <MeetingRecorder
+                onTranscriptReady={submitMeetingTranscript}
+                disabled={isStreaming}
+                compact
+              />
             </div>
 
             {messages.filter((m) => m.role === 'user').length > 0 && (
@@ -1369,7 +1373,10 @@ export default function App() {
                 labels={coachTriple.labels}
                 panels={coachTriple.panels}
                 panelDone={coachTriple.panelDone}
-                placeholders={resolveWorkCoachPanelPlaceholders(coachTriple.labels.length === 3)}
+                placeholders={resolveWorkCoachPanelPlaceholders(
+                  coachTriple.labels.includes(WORK_COACH_CURSOR_LABEL),
+                  coachTriple.labels.includes(WORK_COACH_DEEPSEEK_LABEL)
+                )}
                 isStreaming={isStreaming}
               />
             )}

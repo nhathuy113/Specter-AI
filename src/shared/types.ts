@@ -49,6 +49,7 @@ export interface UserSettings {
   smartCrop: boolean    // capture active window only (vs full screen)
   workAreaCaptureEnabled: boolean
   workAreaDisplayId: number
+  watchFrame: { x: number; y: number; width: number; height: number }
 }
 
 export interface OpenRouterModel {
@@ -91,6 +92,20 @@ export interface AudioStatus {
   isRecording: boolean
   duration: number
   error?: string
+}
+
+export type CapturePreviewOptions = Partial<Pick<UserSettings,
+  'workAreaCaptureEnabled' | 'workAreaDisplayId' | 'fullAutoMode' | 'continuousCoach' |
+  'assistantMode' | 'smartCrop' | 'perceptionMode'
+>>
+
+export interface CapturePreviewResult {
+  screenshot: string
+  timestamp: number
+  appName?: string
+  windowTitle?: string
+  textPreview: string
+  useVision: boolean
 }
 
 export interface ScreenCaptureResult {

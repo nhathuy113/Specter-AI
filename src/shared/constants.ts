@@ -428,7 +428,8 @@ export const DEFAULT_SETTINGS = {
   gameModeVisionPrompt: DEFAULT_GAME_MODE_VISION_PROMPT,
   /** Pin OCR/coach/journal to one monitor (ignores focus). */
   workAreaCaptureEnabled: false,
-  workAreaDisplayId: 0
+  workAreaDisplayId: 0,
+  watchFrame: { x: 0, y: 0, width: 0, height: 0 }
 }
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'

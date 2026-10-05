@@ -23,24 +23,10 @@ function isDevApp(info: MacOSFrontWindowInfo): boolean {
   return isSpecterForeground(info) || DEV_APP.test(`${info.appName} ${info.bundleId}`)
 }
 
-function windowCenterInBounds(
-  window: MacOSFrontWindowInfo,
-  bounds: { x: number; y: number; width: number; height: number }
-): boolean {
-  const cx = window.x + window.width / 2
-  const cy = window.y + window.height / 2
-  return (
-    cx >= bounds.x &&
-    cx < bounds.x + bounds.width &&
-    cy >= bounds.y &&
-    cy < bounds.y + bounds.height
-  )
-}
-
-/** Prefer quiz browser on MacBook primary — not Cursor on external overlay monitor. */
+/** Largest matching window. A quiz title wins. Display is not a tie-break toward the MacBook. */
 export function pickBestBrowserWindow(
   windows: MacOSFrontWindowInfo[],
-  primaryBounds?: { x: number; y: number; width: number; height: number }
+  _primaryBounds?: { x: number; y: number; width: number; height: number }
 ): MacOSFrontWindowInfo | null {
   if (windows.length === 0) return null
 
@@ -48,7 +34,6 @@ export function pickBestBrowserWindow(
     let score = w.width * w.height
     const title = `${w.windowTitle} ${w.appName}`.toLowerCase()
     if (WORK_TITLE.test(title)) score += 1_000_000_000
-    if (primaryBounds && windowCenterInBounds(w, primaryBounds)) score += 500_000_000
     return { w, score }
   })
 
@@ -63,35 +48,26 @@ export function rememberWorkWindow(info: MacOSFrontWindowInfo | null): void {
   if (!isDevApp(info)) lastWorkWindow = info
 }
 
-/** Prefer live browser; when Specter/IDE has focus, scan all monitors for Chrome. */
+/** Crop the live front window. Only look elsewhere when Specter itself is front. */
 export function resolveWorkWindowForCrop(
   current: MacOSFrontWindowInfo | null,
   opts: WorkWindowCropOptions = {}
 ): MacOSFrontWindowInfo | null {
-  if (current && isBrowserApp(current)) {
-    lastBrowserWindow = current
-    lastWorkWindow = current
+  if (current && !isSpecterForeground(current)) {
+    rememberWorkWindow(current)
     return current
   }
 
-  if (current && !isDevApp(current)) {
-    lastWorkWindow = current
-    return current
-  }
-
-  if (lastBrowserWindow) return lastBrowserWindow
+  if (lastWorkWindow) return lastWorkWindow
 
   const scanned = pickBestBrowserWindow(opts.browserWindows ?? [], opts.primaryBounds)
   if (scanned) {
     lastBrowserWindow = scanned
+    lastWorkWindow = scanned
     return scanned
   }
 
-  if (current && isDevApp(current) && !isSpecterForeground(current)) {
-    return current
-  }
-
-  return lastBrowserWindow ?? lastWorkWindow
+  return lastBrowserWindow
 }
 
 export function getRememberedWorkWindow(): MacOSFrontWindowInfo | null {

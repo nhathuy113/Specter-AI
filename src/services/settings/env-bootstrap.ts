@@ -41,7 +41,7 @@ export function bootstrapSettingsFromEnv(): void {
   }
 
   const assistantMode = process.env.ASSISTANT_MODE?.trim()
-  if (assistantMode === 'general' || assistantMode === 'work' || assistantMode === 'game' || assistantMode === 'custom') {
+  if (assistantMode === 'general' || assistantMode === 'game' || assistantMode === 'custom') {
     setSetting('assistantMode', assistantMode)
   }
 

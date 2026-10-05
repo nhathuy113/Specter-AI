@@ -15,6 +15,7 @@ import { getSetting, setSetting } from '../services/settings/store'
 import { OVERLAY_DEFAULTS } from '../shared/constants'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import { applyExcludeFromCapture, verifyDisplayAffinity } from './capture-protection'
+import { syncWatchFrame } from './watch-frame-window'
 import { restoreMacOSForegroundApp } from './macos-front-window'
 import { defaultExpandedOverlayBounds, defaultPillOverlayBounds, getOverlayTargetDisplay, isPillSizedBounds } from '../services/ui/overlay-placement'
 import { resolveOverlayFitBounds, type OverlayFitRequest } from '../services/ui/overlay-fit'
@@ -105,6 +106,7 @@ export function syncOverlayBackgroundMode(): void {
   const watch = getSetting<boolean>('continuousCoach')
   const journal = getSetting<boolean>('activityJournal')
   setOverlayBackgroundWatch(!!(fullAuto || watch || journal))
+  syncWatchFrame()
 }
 
 function applyMacNativeGlass(win: BrowserWindow): void {

@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, screen } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { getSetting, setSetting, getAllSettings, isValidSetting } from '../../services/settings/store'
+import { syncWatchFrame } from '../watch-frame-window'
 import { syncActivityJournal } from '../activity-journal-loop'
 import { syncHourlyReportLoop } from '../hourly-report-loop'
 import { syncGameCaptureLoop } from '../game-capture-loop'
@@ -27,6 +28,7 @@ export function registerSettingsIpcHandlers(overlayWindow: BrowserWindow, syncAu
       throw new Error(`Invalid value for setting: ${key}`)
     }
     setSetting(key, value)
+    if (key === 'watchFrame') syncWatchFrame()
     // Live-update overlay opacity when changed
     if (key === 'overlayOpacity' && typeof value === 'number') {
       setOverlayOpacity(value)

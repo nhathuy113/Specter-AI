@@ -48,9 +48,9 @@ describe('work-window-memory', () => {
     expect(getRememberedWorkWindow()?.appName).toBe('Google Chrome')
   })
 
-  it('does not replace browser with Cursor', () => {
+  it('uses the front window instead of a remembered browser', () => {
     rememberWorkWindow(CHROME)
-    expect(resolveWorkWindowForCrop(CURSOR)?.appName).toBe('Google Chrome')
+    expect(resolveWorkWindowForCrop(CURSOR)?.appName).toBe('Cursor')
   })
 
   it('falls back to browser when Specter is front', () => {
@@ -62,7 +62,7 @@ describe('work-window-memory', () => {
     expect(resolveWorkWindowForCrop(CURSOR)?.appName).toBe('Cursor')
   })
 
-  it('scans browser on primary when Cursor is front on external', () => {
+  it('keeps the external front window instead of a browser on the MacBook', () => {
     const chromeOnPrimary = { ...CHROME, x: 80, y: 40 }
     const cursorOnExternal = { ...CURSOR, x: 1600, y: 0 }
     const primaryBounds = { x: 0, y: 0, width: 1440, height: 900 }
@@ -72,8 +72,8 @@ describe('work-window-memory', () => {
       primaryBounds
     })
 
-    expect(picked?.appName).toBe('Google Chrome')
-    expect(picked?.windowTitle).toContain('123test')
+    expect(picked?.appName).toBe('Cursor')
+    expect(pickBestBrowserWindow([chromeOnPrimary], primaryBounds)?.windowTitle).toContain('123test')
   })
 
   it('prefers quiz title when multiple browsers exist', () => {

@@ -155,7 +155,7 @@ describe('work coach pipeline e2e', () => {
       primaryBounds
     })
 
-    expect(picked?.appName).toBe('Google Chrome')
+    expect(picked?.appName).toBe('Cursor')
     expect(pickBestBrowserWindow([chromeOnPrimary], primaryBounds)?.windowTitle).toContain('123test')
   })
 })

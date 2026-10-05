@@ -48,4 +48,9 @@ export function migrateSettings(s: Pick<SettingsPersistence, 'get' | 'set'>): vo
     s.set('overlayOpacity', DEFAULT_SETTINGS.overlayOpacity)
     console.info('[Specter] Migrated overlay opacity → macOS glass default (95%)')
   }
+
+  if (s.get('assistantMode') === 'work') {
+    s.set('assistantMode', 'general')
+    console.info('[Specter] Migrated assistant mode work → general')
+  }
 }

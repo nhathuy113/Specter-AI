@@ -1,3 +1,4 @@
+import type { CapturePreviewOptions, CapturePreviewResult } from '../shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 
@@ -42,6 +43,7 @@ export interface SpecterAPI {
   // Screen
   captureScreen: () => Promise<{ text: string; screenshot?: string; timestamp: number }>
   captureScreenPreview: () => Promise<{ screenshot: string; timestamp: number }>
+  captureAutoFocusPreview: (options?: CapturePreviewOptions) => Promise<CapturePreviewResult>
 
   // Audio — recording is handled in renderer via MediaRecorder
   checkAudioConfig: () => Promise<{ configured: boolean; provider: string; error?: string }>
@@ -110,6 +112,10 @@ export interface SpecterAPI {
   expandOverlay: () => void
   collapseOverlay: () => void
   fitOverlayContent: (payload: { mode: 'pill' | 'panel' | 'work-triple'; width: number; height: number }) => void
+  setWatchFrameDragging: (active: boolean) => void
+  getWatchFrameBounds: () => Promise<{ x: number; y: number; width: number; height: number }>
+  setWatchFrameBounds: (bounds: { x: number; y: number; width: number; height: number }) => void
+  setWatchFramePassthrough: (ignore: boolean) => void
 }
 
 // --- Type guard helpers for IPC callback data ---
@@ -219,6 +225,7 @@ const api: SpecterAPI = {
   // Screen
   captureScreen: () => ipcRenderer.invoke(IPC_CHANNELS.SCREEN_CAPTURE),
   captureScreenPreview: () => ipcRenderer.invoke(IPC_CHANNELS.SCREEN_CAPTURE_PREVIEW),
+  captureAutoFocusPreview: (options) => ipcRenderer.invoke(IPC_CHANNELS.SCREEN_CAPTURE_AUTO_PREVIEW, options),
 
   // Audio — recording happens in renderer, transcription in main
   checkAudioConfig: () => {
@@ -405,7 +412,11 @@ const api: SpecterAPI = {
 
   expandOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_EXPAND),
   collapseOverlay: () => ipcRenderer.send(IPC_CHANNELS.OVERLAY_COLLAPSE),
-  fitOverlayContent: (payload) => ipcRenderer.send(IPC_CHANNELS.OVERLAY_FIT_CONTENT, payload)
+  fitOverlayContent: (payload) => ipcRenderer.send(IPC_CHANNELS.OVERLAY_FIT_CONTENT, payload),
+  setWatchFrameDragging: (active) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_DRAGGING, active),
+  getWatchFrameBounds: () => ipcRenderer.invoke(IPC_CHANNELS.WATCH_FRAME_GET),
+  setWatchFrameBounds: (bounds) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_SET, bounds),
+  setWatchFramePassthrough: (ignore) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_PASSTHROUGH, ignore)
 }
 
 contextBridge.exposeInMainWorld('specterAPI', api)
