@@ -64,4 +64,12 @@ describe('capture exclusion v1 and v2 gate', () => {
     expect(shape).toContain('CGRegionCreateWithRect')
     expect(shape).not.toContain('shape.msg(handle, shape.windowSel)')
   })
+
+  it('shows v1 or v2 on the overlay pill and title', () => {
+    const overlay = read('src/renderer/overlay/App.tsx')
+    const preload = read('src/preload/index.ts')
+    expect(preload).toContain('captureExclusionVersion(process.platform)')
+    expect(overlay).toContain('captureExclusionVersion')
+    expect(overlay.match(/\{exclusionBadge\}/g)?.length).toBe(2)
+  })
 })

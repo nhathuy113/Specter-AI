@@ -24,6 +24,10 @@ export class MacCaptureExclusionV2 {
   }
 }
 
+export function captureExclusionVersion(platform: NodeJS.Platform): 'v1' | 'v2' {
+  return platform === 'darwin' ? 'v2' : 'v1'
+}
+
 export interface CaptureExclusion {
   protect(win: CaptureProtectedWindow): boolean
 }

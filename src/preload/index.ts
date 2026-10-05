@@ -1,5 +1,6 @@
 import type { CapturePreviewOptions, CapturePreviewResult } from '../shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
+import { captureExclusionVersion } from '../services/capture/mac-capture-exclusion-v2'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 
 export interface StreamDoneData {
@@ -120,6 +121,7 @@ export interface SpecterAPI {
   setWatchFramePassthrough: (ignore: boolean) => void
   askWatchFrame: () => void
   onWatchFrameAskState: (callback: (loading: boolean) => void) => () => void
+  captureExclusionVersion: 'v1' | 'v2'
 }
 
 // --- Type guard helpers for IPC callback data ---
@@ -160,6 +162,7 @@ function isAudioStatus(v: unknown): v is { isRecording: boolean; duration: numbe
 }
 
 const api: SpecterAPI = {
+  captureExclusionVersion: captureExclusionVersion(process.platform),
   // AI
   checkAiConfig: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.AI_CHECK_CONFIG) as Promise<{ configured: boolean; provider: string; error?: string }>

@@ -719,6 +719,8 @@ export default function App() {
     workAutoEnabled === null ? 'Work' : workAutoEnabled ? 'Auto ON' : 'Auto OFF'
 
   const pillLabel = assistantMode === 'work' ? workAutoLabel : 'Specter'
+  const exclusionVersion = window.specterAPI?.captureExclusionVersion ?? 'v1'
+  const exclusionBadge = <span className="text-white/40 text-[10px] font-medium">{exclusionVersion}</span>
 
   /**
    * Submit meeting transcript to AI — called by MeetingRecorder after transcription.
@@ -1075,6 +1077,7 @@ export default function App() {
                     : 'bg-white/30'
               }`} />
               <span className={isWorkPill ? '' : 'text-white/80 text-sm font-medium'}>{pillLabel}</span>
+              {exclusionBadge}
             </div>
             {isWorkPill && (
               <span className="specter-work-pill-sub">
@@ -1122,6 +1125,7 @@ export default function App() {
           <span className="text-white/60 text-xs font-medium tracking-wider uppercase">
             Specter AI
           </span>
+          {exclusionBadge}
           {workAutoEnabled !== null && (
             <button
               onClick={() => void toggleWorkAuto()}

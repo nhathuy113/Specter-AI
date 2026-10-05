@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CaptureExclusionV2, MacCaptureExclusionV2, type CaptureProtectedWindow, type MacCaptureShape } from './mac-capture-exclusion-v2'
+import { CaptureExclusionV2, MacCaptureExclusionV2, captureExclusionVersion, type CaptureProtectedWindow, type MacCaptureShape } from './mac-capture-exclusion-v2'
 
 function window(overrides: Partial<CaptureProtectedWindow> = {}): CaptureProtectedWindow {
   return {
@@ -14,6 +14,14 @@ function window(overrides: Partial<CaptureProtectedWindow> = {}): CaptureProtect
 function shape(windowId: number | null = 7): MacCaptureShape {
   return { windowId: vi.fn(() => windowId), exclude: vi.fn(() => true) }
 }
+
+describe('captureExclusionVersion', () => {
+  it('labels macOS v2 and other platforms v1', () => {
+    expect(captureExclusionVersion('darwin')).toBe('v2')
+    expect(captureExclusionVersion('win32')).toBe('v1')
+    expect(captureExclusionVersion('linux')).toBe('v1')
+  })
+})
 
 describe('MacCaptureExclusionV2', () => {
   it('sets content protection and excludes the window bounds', () => {
