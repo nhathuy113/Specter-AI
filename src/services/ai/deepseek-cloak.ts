@@ -1,8 +1,9 @@
-import { spawn } from 'child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import fs from 'fs'
 import path from 'path'
+import { cloakDeepseekProfileReady } from './completion-route'
+import { createDeepseekBrowser } from './deepseek-browser'
 import { createDeepseekSession } from './deepseek-session'
-import { runJsonProcess } from './json-process'
 
 function scriptPath(): string {
   const candidates = [
@@ -15,9 +16,21 @@ function scriptPath(): string {
   return found
 }
 
-const session = createDeepseekSession((payload, signal) => runJsonProcess(
-  () => spawn('uv', ['run', '--with', 'cloakbrowser', 'python', scriptPath()], { stdio: ['pipe', 'pipe', 'pipe'] }),
-  payload, signal
-))
+const browser = createDeepseekBrowser(() => spawn(
+  'uv',
+  ['run', '--with', 'cloakbrowser', 'python', scriptPath()],
+  { stdio: ['pipe', 'pipe', 'pipe'] }
+) as ChildProcessWithoutNullStreams)
+
+export function startDeepseekCloak(): void {
+  if (!cloakDeepseekProfileReady()) return
+  browser.start()
+}
+
+export function stopDeepseekCloak(): void {
+  browser.stop()
+}
+
+const session = createDeepseekSession((payload, signal) => browser.ask(payload, signal))
 export const streamDeepseekCloak = session.stream
 export const cancelDeepseekCloak = session.cancel

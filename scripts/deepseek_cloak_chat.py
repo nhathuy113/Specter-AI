@@ -7,6 +7,7 @@ import base64
 import json
 import os
 import re
+import signal
 import sys
 import tempfile
 from pathlib import Path
@@ -108,11 +109,50 @@ def attach_screenshot(page, image_b64: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
+def open_composer(page):
+    saved = load_chat_url()
+    page.goto(saved or HOME_URL, wait_until="domcontentloaded", timeout=60000)
+    box = page.locator("textarea[placeholder='Message DeepSeek']")
+    try:
+        box.wait_for(timeout=20000)
+    except Exception:
+        if not saved:
+            raise
+        CHAT_URL_FILE.unlink(missing_ok=True)
+        page.goto(HOME_URL, wait_until="domcontentloaded", timeout=60000)
+        box.wait_for(timeout=20000)
+    return box
+
+
+def send_turn(page, prompt: str, image_b64: str | None) -> None:
+    box = page.locator("textarea[placeholder='Message DeepSeek']")
+    if box.count() == 0:
+        box = open_composer(page)
+    if image_b64:
+        attach_screenshot(page, image_b64)
+    sent = prompt[:8000]
+    before = latest_reply(page, sent)
+    box.fill(sent)
+    box.press("Enter")
+    last = ""
+    for _ in range(90):
+        page.wait_for_timeout(1000)
+        if still_generating(page):
+            continue
+        reply = latest_reply(page, sent)
+        if reply and reply != before:
+            save_chat_url(page.url)
+            emit({"text": reply})
+            return
+        last = reply
+    if last and last != before:
+        save_chat_url(page.url)
+        emit({"text": last})
+        return
+    emit({"error": "DeepSeek reply timed out"})
+
+
 def main() -> int:
-    prompt, image_b64 = parse_stdin(sys.stdin.read())
-    if not prompt:
-        emit({"error": "empty prompt"})
-        return 1
     if not PROFILE.is_dir():
         emit({"error": f"missing profile {PROFILE}"})
         return 1
@@ -124,43 +164,30 @@ def main() -> int:
     )
     from cloakbrowser import launch_persistent_context
 
+    def stop(_signum: int, _frame: object) -> None:
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, stop)
     ctx = launch_persistent_context(str(PROFILE), headless=headless)
     try:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        saved = load_chat_url()
-        page.goto(saved or HOME_URL, wait_until="domcontentloaded", timeout=60000)
-        box = page.locator("textarea[placeholder='Message DeepSeek']")
-        try:
-            box.wait_for(timeout=20000)
-        except Exception:
-            if not saved:
-                raise
-            CHAT_URL_FILE.unlink(missing_ok=True)
-            page.goto(HOME_URL, wait_until="domcontentloaded", timeout=60000)
-            box.wait_for(timeout=20000)
-        if image_b64:
-            attach_screenshot(page, image_b64)
-        before = latest_reply(page, prompt[:8000])
-        box.fill(prompt[:8000])
-        box.press("Enter")
-
-        last = ""
-        for _ in range(90):
-            page.wait_for_timeout(1000)
-            if still_generating(page):
+        open_composer(page)
+        emit({"ready": True})
+        for raw in sys.stdin:
+            line = raw.strip()
+            if not line:
                 continue
-            reply = latest_reply(page, prompt[:8000])
-            if reply and reply != before:
-                save_chat_url(page.url)
-                emit({"text": reply})
+            if line == '{"cmd":"quit"}':
                 return 0
-            last = reply
-        if last and last != before:
-            save_chat_url(page.url)
-            emit({"text": last})
-            return 0
-        emit({"error": "DeepSeek reply timed out"})
-        return 1
+            try:
+                prompt, image_b64 = parse_stdin(line)
+                if not prompt:
+                    emit({"error": "empty prompt"})
+                    continue
+                send_turn(page, prompt, image_b64)
+            except Exception as exc:
+                emit({"error": str(exc)})
+        return 0
     finally:
         ctx.close()
 

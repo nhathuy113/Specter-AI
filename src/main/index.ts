@@ -5,6 +5,7 @@ import { createOverlayWindow, getOverlayWindow, isOverlayBackgroundWatch, showOv
 import { createTray, destroyTray } from './tray'
 import { registerHotkeys, unregisterAllHotkeys } from './hotkey-manager'
 import { registerIpcHandlers } from './ipc-handlers'
+import { startDeepseekCloak, stopDeepseekCloak } from '../services/ai/deepseek-cloak'
 import { bootstrapSettingsFromEnv, loadEnvFiles } from '../services/settings/env-bootstrap'
 
 loadEnvFiles()
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
 
   // Register global hotkeys
   registerHotkeys(overlay)
+  startDeepseekCloak()
 
   // NOTE: Screen share detector was removed — it was incorrectly hiding the overlay
   // whenever meeting apps (Zoom, Teams, Chrome) were simply running.
@@ -97,6 +99,7 @@ app.on('second-instance', () => {
 
 // Cleanup on quit
 app.on('will-quit', () => {
+  stopDeepseekCloak()
   unregisterAllHotkeys()
   destroyTray()
 })
