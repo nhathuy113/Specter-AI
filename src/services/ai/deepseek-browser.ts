@@ -19,12 +19,12 @@ export function createDeepseekBrowser(launch: () => ChildProcessWithoutNullStrea
 
   function handleLine(line: string) {
     if (!line.startsWith('{')) return
-    let parsed: { text?: unknown; error?: unknown; ready?: unknown }
+    let parsed: { text?: unknown; error?: unknown; ready?: unknown; reset?: unknown }
     try { parsed = JSON.parse(line) as typeof parsed } catch {
       failPending(new Error('Invalid DeepSeek response'))
       return
     }
-    if (parsed.ready === true) return
+    if (parsed.ready === true || parsed.reset === true) return
     const current = pending
     pending = null
     if (!current) return
@@ -66,6 +66,22 @@ export function createDeepseekBrowser(launch: () => ChildProcessWithoutNullStrea
       const child = proc
       try { child.stdin.write('{"cmd":"quit"}\n') } catch { /* process already closing */ }
       child.kill()
+    },
+    newChat() {
+      if (!alive() || !proc) {
+        console.info('[Specter] DeepSeek new chat skipped — browser not running')
+        return
+      }
+      console.info('[Specter] DeepSeek cmd new')
+      try { proc.stdin.write('{"cmd":"new"}\n') } catch { /* process already closing */ }
+    },
+    home() {
+      if (!alive() || !proc) {
+        console.info('[Specter] DeepSeek home skipped — browser not running')
+        return
+      }
+      console.info('[Specter] DeepSeek cmd home')
+      try { proc.stdin.write('{"cmd":"home"}\n') } catch { /* process already closing */ }
     },
     ask(payload: string, signal: AbortSignal): Promise<string> {
       if (signal.aborted) return Promise.reject(new Error('DeepSeek request cancelled'))

@@ -27,6 +27,7 @@ export const IPC_CHANNELS = {
   AI_STREAM_DONE: 'ai:stream-done',
   AI_STREAM_ERROR: 'ai:stream-error',
   AI_CANCEL: 'ai:cancel',
+  AI_RESET_CHAT: 'ai:reset-chat',
   AI_COACH_TRIPLE_START: 'ai:coach-triple-start',
   AI_COACH_TRIPLE_PANEL: 'ai:coach-triple-panel',
   AI_COACH_TRIPLE_DONE: 'ai:coach-triple-done',

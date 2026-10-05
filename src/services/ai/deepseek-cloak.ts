@@ -31,6 +31,16 @@ export function stopDeepseekCloak(): void {
   browser.stop()
 }
 
+export function resetDeepseekChat(): void {
+  console.info('[Specter] DeepSeek new chat requested')
+  browser.newChat()
+}
+
+export function openDeepseekHome(): void {
+  console.info('[Specter] DeepSeek opening home')
+  browser.home()
+}
+
 const session = createDeepseekSession((payload, signal) => browser.ask(payload, signal))
 export const streamDeepseekCloak = session.stream
 export const cancelDeepseekCloak = session.cancel

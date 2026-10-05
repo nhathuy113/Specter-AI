@@ -31,6 +31,7 @@ import { isValidQuery, isValidMessageHistory } from './input-validation'
 import { completionGateway } from '../../services/ai/providers'
 import { completionCost, completionModelLabel } from '../../services/ai/completion-pricing'
 import { cloakDeepseekProfileReady, selectCompletionRoute } from '../../services/ai/completion-route'
+import { resetDeepseekChat } from '../../services/ai/deepseek-cloak'
 
 export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boolean): void {
   const requests = createRequestOwnership<object>()
@@ -390,6 +391,10 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
     requests.invalidate(event.sender)
     markQuizUserActivity()
     completionGateway.cancel()
+  })
+
+  ipcMain.on(IPC_CHANNELS.AI_RESET_CHAT, () => {
+    resetDeepseekChat()
   })
 
 }

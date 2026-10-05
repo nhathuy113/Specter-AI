@@ -34,6 +34,16 @@ describe('persistent DeepSeek browser', () => {
     expect(first.stdin.write).toHaveBeenCalledWith('{"prompt":"two"}\n')
   })
 
+  it('asks DeepSeek to open a new chat without dropping the process', () => {
+    const proc = fakeProcess()
+    const browser = createDeepseekBrowser(() => proc as unknown as ChildProcessWithoutNullStreams)
+    browser.start()
+    browser.newChat()
+    proc.stdout.emit('data', '{"reset":true}\n')
+    expect(proc.stdin.write).toHaveBeenCalledWith('{"cmd":"new"}\n')
+    expect(proc.kill).not.toHaveBeenCalled()
+  })
+
   it('closes the browser only when stopped', () => {
     const proc = fakeProcess()
     const browser = createDeepseekBrowser(() => proc as unknown as ChildProcessWithoutNullStreams)

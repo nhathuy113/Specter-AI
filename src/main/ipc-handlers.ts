@@ -7,6 +7,7 @@ import { createAutoCaptureLoop } from './auto-capture-loop'
 import { syncContinuousCoach } from './continuous-coach-loop'
 import { syncActivityJournal } from './activity-journal-loop'
 import { syncHourlyReportLoop } from './hourly-report-loop'
+import { syncDeepseekChatRotate } from './deepseek-chat-rotate-loop'
 import { syncGameCaptureLoop } from './game-capture-loop'
 import { createRateLimiter } from './ipc/rate-limiter'
 import { registerAiIpcHandlers } from './ipc/ai-handlers'
@@ -43,5 +44,6 @@ export function registerIpcHandlers(overlayWindow: BrowserWindow): void {
   syncContinuousCoach(overlayWindow)
   syncActivityJournal()
   syncHourlyReportLoop()
+  syncDeepseekChatRotate()
   syncGameCaptureLoop()
 }

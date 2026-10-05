@@ -70,6 +70,10 @@
       {
         "from": "scripts/deepseek_cloak_chat.py",
         "to": "deepseek_cloak_chat.py"
+      },
+      {
+        "from": "scripts/deepseek_chat_rotate.py",
+        "to": "deepseek_chat_rotate.py"
       }
     ],
     "win": {

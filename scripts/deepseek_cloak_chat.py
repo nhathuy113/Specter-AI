@@ -10,12 +10,15 @@ import re
 import signal
 import sys
 import tempfile
+from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
 
 
 PROFILE = Path.home() / ".cloakbrowser" / "profiles" / "cloak-nhathuy113"
 CHAT_URL_FILE = Path.home() / ".specter" / "deepseek-chat-url"
+CHAT_DAY_FILE = Path.home() / ".specter" / "deepseek-chat-day"
+CHAT_LOG_FILE = Path.home() / ".specter" / "deepseek-chat-log.json"
 CHAT_URL = re.compile(r"https://chat\.deepseek\.com/a/chat/s/([^/?#]+)")
 HOME_URL = "https://chat.deepseek.com/"
 SKIP = {
@@ -33,26 +36,87 @@ def chat_url_from(url: str) -> str | None:
     return f"https://chat.deepseek.com/a/chat/s/{match.group(1)}"
 
 
-def load_chat_url() -> str | None:
-    if not CHAT_URL_FILE.is_file():
+def load_chat_url(path: Path = CHAT_URL_FILE) -> str | None:
+    if not path.is_file():
         return None
-    return chat_url_from(CHAT_URL_FILE.read_text(encoding="utf-8"))
+    return chat_url_from(path.read_text(encoding="utf-8"))
 
 
 def forget_saved_chat(path: Path = CHAT_URL_FILE) -> None:
     path.unlink(missing_ok=True)
 
 
-def save_chat_url(url: str) -> None:
+def chat_day(path: Path = CHAT_DAY_FILE) -> str:
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
+
+def remember_chat_day(day: str, path: Path = CHAT_DAY_FILE) -> None:
+    if path.is_file() and path.read_text(encoding="utf-8").strip():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(day + "\n", encoding="utf-8")
+
+
+def read_chat_log(path: Path = CHAT_LOG_FILE) -> list[dict]:
+    if not path.is_file():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, list) else []
+
+
+def write_chat_log(rows: list[dict], path: Path = CHAT_LOG_FILE) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows), encoding="utf-8")
+
+
+def save_chat_url(url: str, day: str | None = None, url_path: Path = CHAT_URL_FILE, day_path: Path = CHAT_DAY_FILE) -> None:
     chat = chat_url_from(url)
     if not chat:
         return
-    CHAT_URL_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CHAT_URL_FILE.write_text(chat + "\n", encoding="utf-8")
+    url_path.parent.mkdir(parents=True, exist_ok=True)
+    url_path.write_text(chat + "\n", encoding="utf-8")
+    remember_chat_day(day or date.today().isoformat(), day_path)
+
+
+def park_active_chat(day: str, url_path: Path = CHAT_URL_FILE, day_path: Path = CHAT_DAY_FILE, log_path: Path = CHAT_LOG_FILE) -> None:
+    url = load_chat_url(url_path)
+    if not url:
+        return
+    saved_day = chat_day(day_path) or day
+    rows = read_chat_log(log_path)
+    if not any(row.get("url") == url for row in rows):
+        rows.append({"url": url, "day": saved_day})
+    write_chat_log(rows, log_path)
+    forget_saved_chat(url_path)
+    forget_saved_chat(day_path)
+    debug(f"parked chat day={saved_day}")
+
+
+def rotate_saved_chats(today: str, url_path: Path = CHAT_URL_FILE, day_path: Path = CHAT_DAY_FILE, log_path: Path = CHAT_LOG_FILE) -> dict:
+    rows = read_chat_log(log_path)
+    deleted = [row["url"] for row in rows if row.get("day", "") < today]
+    write_chat_log([row for row in rows if row.get("day", "") >= today], log_path)
+    cleared_active = False
+    active_day = chat_day(day_path)
+    if active_day and active_day < today:
+        active = load_chat_url(url_path)
+        if active:
+            deleted.append(active)
+        forget_saved_chat(url_path)
+        forget_saved_chat(day_path)
+        cleared_active = True
+    debug(f"rotate today={today} deleted={len(deleted)} clearedActive={cleared_active}")
+    return {"deleted": deleted, "clearedActive": cleared_active}
 
 
 def emit(payload: dict) -> None:
     print(json.dumps(payload), flush=True)
+
+
+def debug(message: str) -> None:
+    print(f"[Specter] {message}", file=sys.stderr, flush=True)
 
 
 def parse_stdin(raw: str) -> tuple[str, str | None]:
@@ -278,7 +342,6 @@ def main() -> int:
         raise SystemExit(0)
 
     signal.signal(signal.SIGTERM, stop)
-    forget_saved_chat()
     ctx = launch_persistent_context(str(PROFILE), headless=headless)
     try:
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -291,6 +354,17 @@ def main() -> int:
             if line == '{"cmd":"quit"}':
                 return 0
             try:
+                if line == '{"cmd":"new"}':
+                    debug("cmd new")
+                    park_active_chat(date.today().isoformat())
+                    page.goto(HOME_URL, wait_until="domcontentloaded", timeout=60000)
+                    emit({"reset": True})
+                    continue
+                if line == '{"cmd":"home"}':
+                    debug("cmd home")
+                    page.goto(HOME_URL, wait_until="domcontentloaded", timeout=60000)
+                    emit({"reset": True})
+                    continue
                 prompt, image_b64 = parse_stdin(line)
                 if not prompt:
                     emit({"error": "empty prompt"})

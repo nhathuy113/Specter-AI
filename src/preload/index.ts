@@ -31,6 +31,7 @@ export interface SpecterAPI {
     options?: QueryAIOptions
   ) => void
   cancelAI: () => void
+  resetDeepseekChat: () => void
   onStreamChunk: (callback: (chunk: string) => void) => () => void
   onStreamDone: (callback: (data: StreamDoneData) => void) => () => void
   onStreamError: (callback: (error: string) => void) => () => void
@@ -183,6 +184,9 @@ const api: SpecterAPI = {
   },
   cancelAI: () => {
     ipcRenderer.send(IPC_CHANNELS.AI_CANCEL)
+  },
+  resetDeepseekChat: () => {
+    ipcRenderer.send(IPC_CHANNELS.AI_RESET_CHAT)
   },
   onStreamChunk: (callback) => {
     const handler = (_: Electron.IpcRendererEvent, chunk: unknown) => {

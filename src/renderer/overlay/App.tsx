@@ -5,7 +5,7 @@ import CoachTriplePanel from './CoachTriplePanel'
 import WorkCoachGuidePanel from './WorkCoachGuidePanel'
 import TranscriptBar from './TranscriptBar'
 import MeetingRecorder from './MeetingRecorder'
-import { Send, Mic, MicOff, Monitor, Settings, GripVertical, Minimize2, Maximize2, X, ScanSearch, Paperclip, Trash2, Clock, ChevronLeft, MessageSquare, Power, Sparkles } from 'lucide-react'
+import { Send, Mic, MicOff, Monitor, Settings, GripVertical, Minimize2, Maximize2, X, ScanSearch, Paperclip, Trash2, Clock, ChevronLeft, MessageSquare, Power, Sparkles, RotateCcw } from 'lucide-react'
 import type { StreamDoneData } from '../../preload/index'
 import type { Message, Conversation, AssistantMode } from '../../shared/types'
 import {
@@ -804,6 +804,7 @@ export default function App() {
   }, [])
 
   const clearChat = useCallback(() => {
+    window.specterAPI?.resetDeepseekChat()
     setMessages([])
     setStreamingContent('')
     setError(null)
@@ -1153,15 +1154,13 @@ export default function App() {
           >
             <Clock className="w-3.5 h-3.5 text-white/40 hover:text-white/70" />
           </button>
-          {messages.length > 0 && (
-            <button
-              onClick={clearChat}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-              title="New conversation"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-white/40 hover:text-white/70" />
-            </button>
-          )}
+          <button
+            onClick={clearChat}
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            title="Restart — chat mới DeepSeek"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-white/40 hover:text-white/70" />
+          </button>
           <button
             onClick={() => window.specterAPI?.openDashboard()}
             className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
