@@ -45,6 +45,13 @@ describe('coach prompt', () => {
     expect(message).toContain('concrete in-game action')
   })
 
+  it('general screen asks for the solution and why', () => {
+    const req = resolveAssistantRequest('[SCREENSHOT] Use the attached image as primary context.', 'general')
+    expect(req.userMessage).toContain('**Giúp:**')
+    expect(req.userMessage).toContain('**Vì sao:**')
+    expect(req.userMessage.toLowerCase()).not.toContain('leetcode')
+  })
+
   it('general mode keeps IDE OCR for the model', () => {
     const req = resolveCoachRequest('Cursor\nfunction main() {}', 'general')
     expect(req.kind).toBe('ide')

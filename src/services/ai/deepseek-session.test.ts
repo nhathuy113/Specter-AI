@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createDeepseekSession } from './deepseek-session'
+import { createDeepseekSession, DEEPSEEK_IMAGE_PROMPT } from './deepseek-session'
 
-const request = { messages: [{ role: 'user' as const, content: 'hello' }], model: '', apiKey: '', screenshot: 'b64' }
+const request = { messages: [{ role: 'system' as const, content: 'long english rules' }, { role: 'user' as const, content: 'hello' }], model: '', apiKey: '', screenshot: 'b64' }
 function callbacks() { return { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() } }
 
 describe('DeepSeek browser session', () => {
@@ -13,9 +13,10 @@ describe('DeepSeek browser session', () => {
     const first = session.stream(request, a), second = session.stream(request, b)
     await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce())
     expect(JSON.parse(execute.mock.calls[0][0])).toEqual({
-      prompt: 'hello\n\nTrả lời bằng tiếng Việt.',
+      prompt: DEEPSEEK_IMAGE_PROMPT,
       image_base64: 'b64'
     })
+    expect(execute.mock.calls[0][0]).not.toContain('long english rules')
     finish('first')
     await Promise.all([first, second])
     expect(a.onChunk).toHaveBeenCalledWith('first')

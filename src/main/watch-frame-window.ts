@@ -25,6 +25,11 @@ function queueSave(): void {
   saveTimer = setTimeout(saveFrame, 150)
 }
 
+export function notifyWatchFrameAsk(loading: boolean): void {
+  if (!frameWindow || frameWindow.isDestroyed()) return
+  frameWindow.webContents.send(IPC_CHANNELS.WATCH_FRAME_ASK_STATE, loading)
+}
+
 export function getLiveWatchFrame(): WatchFrame | undefined {
   return frameWindow && !frameWindow.isDestroyed() ? frameWindow.getBounds() : undefined
 }

@@ -1,5 +1,5 @@
 // ResponseCard — displays a single message in the overlay with markdown support
-import { memo, useState, useCallback, useMemo } from 'react'
+import { memo, useState, useCallback, useMemo, type ReactNode } from 'react'
 import { User, Bot, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
@@ -8,6 +8,47 @@ import type { Message } from '../../shared/types'
 interface ResponseCardProps {
   message: Message
   isStreaming?: boolean
+}
+
+function codeText(children: ReactNode): string {
+  if (typeof children === 'string' || typeof children === 'number') return String(children)
+  if (Array.isArray(children)) return children.map(codeText).join('')
+  return ''
+}
+
+function MarkdownCode({ className, children }: { className?: string; children?: ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const text = codeText(children).replace(/\n$/, '')
+  const lang = className?.match(/language-([\w+-]+)/)?.[1] ?? ''
+  const isBlock = Boolean(lang) || text.includes('\n')
+  const copyBlock = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard may not be available
+    }
+  }, [text])
+
+  if (!isBlock) {
+    return <code className="px-1.5 py-0.5 rounded bg-white/10 text-violet-300/90 text-xs font-mono">{children}</code>
+  }
+
+  return (
+    <div className="my-2 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1 bg-white/5">
+        <span className="text-[10px] text-white/40 font-mono uppercase tracking-wider">{lang}</span>
+        <button type="button" onClick={copyBlock} className="flex items-center gap-1 text-[10px] text-white/50">
+          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="px-3 py-2 bg-black/30 text-xs font-mono text-emerald-300/80 overflow-x-auto whitespace-pre">
+        <code>{text}</code>
+      </pre>
+    </div>
+  )
 }
 
 function ResponseCard({ message, isStreaming = false }: ResponseCardProps) {
@@ -47,30 +88,7 @@ function ResponseCard({ message, isStreaming = false }: ResponseCardProps) {
           ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
           li: ({ children }) => <li className="text-white/80">{children}</li>,
 
-          // Inline code
-          code: ({ className, children, ...props }) => {
-            const isBlock = className?.includes('language-')
-            if (isBlock) {
-              const lang = className?.replace('language-', '') || ''
-              return (
-                <div className="my-2 rounded-lg overflow-hidden">
-                  {lang && (
-                    <div className="px-3 py-1 bg-white/5 text-[10px] text-white/30 font-mono uppercase tracking-wider">
-                      {lang}
-                    </div>
-                  )}
-                  <pre className="px-3 py-2 bg-black/30 text-xs font-mono text-emerald-300/80 overflow-x-auto">
-                    <code {...props}>{children}</code>
-                  </pre>
-                </div>
-              )
-            }
-            return (
-              <code className="px-1.5 py-0.5 rounded bg-white/10 text-violet-300/90 text-xs font-mono" {...props}>
-                {children}
-              </code>
-            )
-          },
+          code: MarkdownCode,
 
           // Pre (code blocks)
           pre: ({ children }) => <>{children}</>,

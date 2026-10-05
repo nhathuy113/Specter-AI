@@ -37,6 +37,7 @@ function cleanOcrLines(rawText: string): string[] {
 }
 
 function formatMetadataHeader(metadata?: ScreenMetadata): string {
+  if (metadata?.windowTitle === 'watch-frame') return ''
   if (!metadata?.appName && !metadata?.windowTitle) return ''
   const parts = [
     metadata.appName ? `[ACTIVE APP] ${metadata.appName}` : '',
@@ -215,7 +216,13 @@ function taskForMode(mode: AssistantMode, kind: ScreenKind, profile?: WorkProble
     ]
   }
 
-  return base
+  return [
+    'Nhìn screenshot. Giúp tôi với những gì đang hiện trên màn hình, rồi giải thích vì sao.',
+    'Trả lời tiếng Việt, ngắn, markdown:',
+    '**Giúp:** việc nên làm, hoặc đáp án nếu màn hình đang hỏi một câu.',
+    '**Vì sao:** 1-2 câu, dựa trên chữ hoặc hình đang thấy.',
+    'Không nói bạn đã click hay gõ.'
+  ]
 }
 
 function buildWorkCoachUserMessage(

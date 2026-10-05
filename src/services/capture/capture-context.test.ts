@@ -8,6 +8,8 @@ describe('capture context policy', () => {
     const result = await resolveCaptureContext('image', { coachVision: true, mode: 'vision', appName: 'Browser', accessibility: null }, { ocr, fingerprint })
     expect(result).toMatchObject({ useVision: true, textSource: 'metadata', imageFingerprint: 'image-key' })
     expect(result.text).toContain('[ACTIVE APP] Browser')
+    const frame = await resolveCaptureContext('image', { coachVision: true, mode: 'vision', appName: 'Watch: VG27A', windowTitle: 'watch-frame', accessibility: null }, { ocr, fingerprint })
+    expect(frame.text).toBe('[SCREENSHOT] Use the attached image as primary context.')
     expect(ocr).not.toHaveBeenCalled()
     expect(fingerprint).toHaveBeenCalledWith('image')
   })

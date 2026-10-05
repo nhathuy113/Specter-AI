@@ -15,9 +15,10 @@ export async function resolveCaptureContext<T>(image: T, options: CaptureContext
 }) {
   if (options.coachVision) {
     const imageFingerprint = await ports.fingerprint(image)
+    const watchFrame = options.windowTitle === 'watch-frame'
     const text = [
-      options.appName ? `[ACTIVE APP] ${options.appName}` : '',
-      options.windowTitle ? `[WINDOW] ${options.windowTitle}` : '',
+      !watchFrame && options.appName ? `[ACTIVE APP] ${options.appName}` : '',
+      !watchFrame && options.windowTitle ? `[WINDOW] ${options.windowTitle}` : '',
       '[SCREENSHOT] Use the attached image as primary context.'
     ].filter(Boolean).join('\n')
     return { text, textSource: 'metadata' as const, useVision: true, imageFingerprint }

@@ -21,6 +21,7 @@ import { buildPlaybookContext, filterPlaybooksForMode } from '../../services/con
 import { getRecentJournalContext } from '../../services/journal/activity-journal'
 import { checkAiConfig } from '../../services/ai/ai-config'
 import { captureScreenText } from '../screen-capture'
+import { notifyWatchFrameAsk } from '../watch-frame-window'
 import { getTranscript } from '../audio-capture'
 import { shouldRunCoachVerboseLogging } from '../overlay-window'
 import { DEFAULT_SETTINGS } from '../../shared/constants'
@@ -294,11 +295,13 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
             totalCost,
             model: modelLabel
           })
+          notifyWatchFrameAsk(false)
         }
       },
       onError: (error: string) => {
         if (isCurrent()) {
           event.sender.send(IPC_CHANNELS.AI_STREAM_ERROR, error)
+          notifyWatchFrameAsk(false)
         }
       }
     }
@@ -329,6 +332,7 @@ export function registerAiIpcHandlers(checkRateLimit: (channel: string) => boole
             totalCost: 0,
             model: modelLabel
           })
+          notifyWatchFrameAsk(false)
         }
       }
 

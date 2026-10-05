@@ -118,6 +118,7 @@ export interface SpecterAPI {
   setWatchFrameBounds: (bounds: { x: number; y: number; width: number; height: number }) => void
   setWatchFramePassthrough: (ignore: boolean) => void
   askWatchFrame: () => void
+  onWatchFrameAskState: (callback: (loading: boolean) => void) => () => void
 }
 
 // --- Type guard helpers for IPC callback data ---
@@ -420,7 +421,14 @@ const api: SpecterAPI = {
   getWatchFrameBounds: () => ipcRenderer.invoke(IPC_CHANNELS.WATCH_FRAME_GET),
   setWatchFrameBounds: (bounds) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_SET, bounds),
   setWatchFramePassthrough: (ignore) => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_PASSTHROUGH, ignore),
-  askWatchFrame: () => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_ASK)
+  askWatchFrame: () => ipcRenderer.send(IPC_CHANNELS.WATCH_FRAME_ASK),
+  onWatchFrameAskState: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, loading: unknown) => {
+      if (typeof loading === 'boolean') callback(loading)
+    }
+    ipcRenderer.on(IPC_CHANNELS.WATCH_FRAME_ASK_STATE, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.WATCH_FRAME_ASK_STATE, handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('specterAPI', api)

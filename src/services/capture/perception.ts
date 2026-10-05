@@ -100,6 +100,7 @@ export function resolvePerceptionPlan(
 }
 
 export function buildVisionUserTask(assistantUserMessage: string): string {
+  if (assistantUserMessage.includes('[SCREENSHOT]')) return assistantUserMessage
   if (assistantUserMessage.trim()) {
     return `${assistantUserMessage}\n\n[NOTE] A cropped screenshot of the user's active work window is attached. Use the image as primary context; OCR above is supplementary only.`
   }

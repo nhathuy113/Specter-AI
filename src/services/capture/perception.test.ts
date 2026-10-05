@@ -48,5 +48,6 @@ describe('perception', () => {
     const task = buildVisionUserTask('[CONTENT]\nBrussels\nManpower: 23')
     expect(task).toContain('screenshot')
     expect(task).toContain('Brussels')
+    expect(buildVisionUserTask('[SCREENSHOT] Use the attached image as primary context.')).not.toContain('[NOTE]')
   })
 })

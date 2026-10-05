@@ -9,6 +9,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)))
 const NOISY_OCR = readFileSync(resolve(root, 'fixtures/leetcode-median-noisy-ocr.txt'), 'utf8')
 
 describe('context-router work coach OCR', () => {
+  it('does not label the watch frame as the screen being read', () => {
+    const req = resolveAssistantRequest('[SCREENSHOT] Use the attached image as primary context.', 'general', {
+      appName: 'Watch: VG27A',
+      windowTitle: 'watch-frame'
+    })
+    expect(req.userMessage).not.toContain('watch-frame')
+    expect(req.userMessage).not.toContain('Watch: VG27A')
+  })
+
   it('cleans real LeetCode OCR to python editor lines', () => {
     const clean = cleanLeetCodeEditorOcr(NOISY_OCR)
     expect(clean).toContain('def findMedianSortedArrays')

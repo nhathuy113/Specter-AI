@@ -9,7 +9,9 @@ import { CoachTriggerEvaluator } from '../services/coach/coach-state'
 import { createCoachTickRunner } from '../services/coach/coach-tick-runner'
 import { resolveBackgroundCaptureParams } from '../services/capture/background-capture-params'
 import { getSetting } from '../services/settings/store'
-import { captureScreenText } from './screen-capture'
+import { captureScreenText, isCurrentlyCapturing } from './screen-capture'
+import { notifyWatchFrameAsk } from './watch-frame-window'
+import { runWhenCaptureFree } from '../services/capture/capture-slot'
 import { appendJournalFromCapture, resolveJournalFocusFingerprint } from '../services/journal/activity-journal-capture'
 import { expandOverlayWindow, syncOverlayBackgroundMode, shouldRunCoachAutoUi, shouldRunWorkJournal } from './overlay-window'
 
@@ -18,6 +20,7 @@ let coachOverlay: BrowserWindow | null = null
 let overlayCoachStreaming = false
 let lastJournalLogMs = 0
 let lastJournalFingerprint = ''
+let manualAskPending = false
 
 const evaluator = new CoachTriggerEvaluator()
 const runCoachTick = createCoachTickRunner(evaluator)
@@ -60,6 +63,7 @@ export async function runCoachTickForTest(deps: Partial<{
 }
 
 async function coachTimerTick(): Promise<void> {
+  if (manualAskPending) return
   if (!coachOverlay || coachOverlay.isDestroyed()) {
     stopContinuousCoach()
     return
@@ -140,13 +144,30 @@ export function startContinuousCoach(overlayWindow: BrowserWindow, intervalSec: 
 
 /** Manual send from the watch frame. Ignores fingerprint and cooldown. */
 export async function askWatchFrameCoach(): Promise<void> {
-  if (!coachOverlay || coachOverlay.isDestroyed()) return
+  if (manualAskPending || !coachOverlay || coachOverlay.isDestroyed()) {
+    notifyWatchFrameAsk(false)
+    return
+  }
   expandOverlayWindow(false)
+  manualAskPending = true
   const p = resolveBackgroundCaptureParams((key) => getSetting(key))
-  const capture = await captureScreenText(p.activeWindowOnly, p.perceptionMode, {
-    skipAccessibility: p.skipAccessibility,
-    coachVision: p.coachVision
-  })
+  let capture
+  try {
+    capture = await runWhenCaptureFree(
+      isCurrentlyCapturing,
+      () => captureScreenText(p.activeWindowOnly, p.perceptionMode, {
+        skipAccessibility: p.skipAccessibility,
+        coachVision: p.coachVision
+      }),
+      (ms) => new Promise(resolve => setTimeout(resolve, ms))
+    )
+  } catch (err) {
+    console.warn('[Specter] Watch frame send failed:', err)
+    notifyWatchFrameAsk(false)
+    return
+  } finally {
+    manualAskPending = false
+  }
   const fingerprint = capture.imageFingerprint || capture.fingerprintText || capture.text
   if (fingerprint) evaluator.recordCoachTriggered(Date.now(), fingerprint)
   coachOverlay.webContents.send(IPC_CHANNELS.COACH_TRIGGER, {

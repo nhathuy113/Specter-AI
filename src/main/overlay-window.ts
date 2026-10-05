@@ -55,7 +55,7 @@ function resolveExpandedBounds(): Rectangle {
   const winWidth = savedSize?.width || OVERLAY_DEFAULTS.width
   const winHeight = savedSize?.height || OVERLAY_DEFAULTS.height
 
-  if (savedPosition != null && savedPosition.x >= 0 && savedPosition.y >= 0) {
+  if (savedPosition != null && !(savedPosition.x === -1 && savedPosition.y === -1)) {
     return { x: savedPosition.x, y: savedPosition.y, width: winWidth, height: winHeight }
   }
 
@@ -229,7 +229,8 @@ export function showOverlayPill(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
 
   cacheExpandedBounds(overlayWindow)
-  const pillBounds = getPillBounds()
+  const current = overlayWindow.getBounds()
+  const pillBounds = { ...getPillBounds(), x: current.x, y: current.y }
   overlayWindow.setBounds(pillBounds)
   overlayWindow.setFocusable(false)
   if (process.platform === 'darwin') {
@@ -245,8 +246,17 @@ export function showOverlayPill(): void {
 export function expandOverlayWindow(focus = true): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
 
-  cachedExpandedBounds = null
-  restoreExpandedBounds(overlayWindow)
+  const current = overlayWindow.getBounds()
+  if (!overlayWindow.isVisible()) restoreExpandedBounds(overlayWindow)
+  else if (isPillBounds(current)) {
+    const savedSize = getSetting<{ width: number; height: number }>('overlaySize')
+    setBoundsQuiet(overlayWindow, {
+      x: current.x,
+      y: current.y,
+      width: savedSize?.width || OVERLAY_DEFAULTS.width,
+      height: savedSize?.height || OVERLAY_DEFAULTS.height
+    })
+  }
   const bounds = overlayWindow.getBounds()
   overlayWindow.setFocusable(true)
   if (process.platform === 'darwin') {
@@ -349,8 +359,7 @@ export function fitOverlayToContent(req: OverlayFitRequest): void {
   if (req.mode === 'pill') {
     sendOverlayPillMode(overlayWindow, true)
   } else if (!isPillBounds(next)) {
-    cachedExpandedBounds = next
-    setSetting('overlayPosition', { x: next.x, y: next.y })
+    cachedExpandedBounds = { ...overlayWindow.getBounds(), width: next.width, height: next.height }
     setSetting('overlaySize', { width: next.width, height: next.height })
   }
 }

@@ -24,13 +24,28 @@ window.addEventListener('mousemove', event => {
   if (dragging) return
   if (isAsk(event.target)) {
     passthrough(false)
-    document.body.style.cursor = 'pointer'
+    setAskHover(true)
+    document.body.style.cursor = askLoading ? 'progress' : 'pointer'
     return
   }
+  setAskHover(false)
   const edge = hitWatchFrame(event.clientX, event.clientY, window.innerWidth, window.innerHeight)
   passthrough(edge === null)
   document.body.style.cursor = edge === 'move' ? 'move' : edge ? `${edge}-resize` : 'default'
 })
+
+const askButton = document.querySelector('#ask')
+let askLoading = false
+function setAskHover(on: boolean): void {
+  askButton?.classList.toggle('is-hover', on && !askLoading)
+}
+function setAskLoading(on: boolean): void {
+  askLoading = on
+  askButton?.classList.toggle('is-loading', on)
+  askButton?.classList.toggle('is-hover', false)
+  if (askButton) askButton.textContent = on ? 'Đang gửi…' : 'Gửi'
+}
+window.specterAPI.onWatchFrameAskState(setAskLoading)
 
 function isAsk(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest('#ask')
@@ -40,7 +55,9 @@ window.addEventListener('pointerdown', event => {
   if (event.button !== 0) return
   if (isAsk(event.target)) {
     event.preventDefault()
+    if (askLoading) return
     passthrough(false)
+    setAskLoading(true)
     window.specterAPI.askWatchFrame()
     return
   }
